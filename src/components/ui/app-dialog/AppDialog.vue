@@ -15,6 +15,8 @@ defineProps<{
   title: string
   description?: string
   contentClass?: string
+  bodyClass?: string
+  mobileFullscreen?: boolean
 }>()
 
 const emit = defineEmits<{
@@ -27,8 +29,11 @@ const emit = defineEmits<{
     <DialogPortal>
       <DialogOverlay class="fixed inset-0 z-100 bg-black/45 backdrop-blur-[2px] data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0" />
       <DialogContent
-        class="fixed left-1/2 top-1/2 z-101 flex max-h-[calc(100dvh-2rem)] w-[calc(100vw-2rem)] max-w-5xl -translate-x-1/2 -translate-y-1/2 flex-col overflow-hidden rounded-lg border border-border/70 bg-card/95 text-card-foreground shadow-2xl backdrop-blur-xl focus:outline-none"
-        :class="contentClass"
+        class="app-dialog-content fixed left-1/2 top-1/2 z-101 flex w-[calc(100vw-2rem)] max-w-5xl -translate-x-1/2 -translate-y-1/2 flex-col overflow-hidden rounded-lg border border-border/70 bg-card/95 text-card-foreground shadow-2xl backdrop-blur-xl focus:outline-none"
+        :class="[
+          contentClass,
+          mobileFullscreen && 'app-dialog-content--mobile-fullscreen max-sm:inset-0 max-sm:h-screen max-sm:max-h-none max-sm:w-full max-sm:max-w-none max-sm:translate-x-0 max-sm:translate-y-0 max-sm:rounded-none max-sm:border-0',
+        ]"
       >
         <div class="flex items-start gap-3 border-b border-border/60 px-4 py-3 sm:px-5">
           <div class="min-w-0 flex-1">
@@ -49,10 +54,30 @@ const emit = defineEmits<{
             </button>
           </DialogClose>
         </div>
-        <div class="min-h-0 flex-1 overflow-y-auto p-4 sm:p-5">
+        <div class="min-h-0 flex-1 overflow-y-auto p-4 sm:p-5" :class="bodyClass">
           <slot />
+        </div>
+        <div
+          v-if="$slots.footer"
+          class="shrink-0 border-t border-border/60 bg-card/80 px-4 py-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] backdrop-blur-xl sm:px-5"
+        >
+          <slot name="footer" />
         </div>
       </DialogContent>
     </DialogPortal>
   </DialogRoot>
 </template>
+
+<style scoped>
+.app-dialog-content {
+  max-height: calc(100vh - 2rem);
+  max-height: calc(100dvh - 2rem);
+}
+
+@media (max-width: 639px) {
+  .app-dialog-content--mobile-fullscreen {
+    height: 100vh;
+    height: 100dvh;
+  }
+}
+</style>

@@ -8,7 +8,7 @@ import { useNodeProviderMetadata } from '@/composables/useNodeProviderMetadata'
 import { useAppStore } from '@/stores/app'
 import * as financeHelper from '@/utils/financeHelper'
 import { formatBytesWithConfig } from '@/utils/helper'
-import { hasFreeNodeTag } from '@/utils/tagHelper'
+import { isFreeNode } from '@/utils/tagHelper'
 
 interface NodeValueRow {
   key: string
@@ -57,7 +57,7 @@ onMounted(async () => {
 function shouldExcludeNode(node: NodeData): boolean {
   if (Number(node.price) <= 0)
     return true
-  return excludeFreeNodes.value && hasFreeNodeTag(node.tags)
+  return excludeFreeNodes.value && isFreeNode(node.price, node.tags)
 }
 
 function getProviderName(node: NodeData): string {

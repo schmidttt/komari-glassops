@@ -24,7 +24,7 @@ const formattedServerVersion = computed(() => serverVersion.value?.version ?? ''
 </script>
 
 <template>
-  <footer class="w-full max-w-[1280px] mx-auto p-4">
+  <footer class="mx-auto w-full max-w-[2200px] p-4">
     <div class="flex w-full flex-row justify-between gap-4 text-xs text-muted-foreground">
       <div class="flex gap-1 items-center">
         Powered by
@@ -49,10 +49,10 @@ const formattedServerVersion = computed(() => serverVersion.value?.version ?? ''
           :content="`v${buildVersion}\n${buildGitHash}`"
         >
           <a
-            href="https://github.com/sanrokamlan-prog/komari-theme-Glassmorphism" target="_blank" rel="noopener noreferrer"
+            href="https://github.com/Schmidttt/komari-glassops" target="_blank" rel="noopener noreferrer"
             class="transition-opacity hover:opacity-80"
           >
-            <span class="font-medium text-foreground">Komari Glassmorphism</span>
+            <span class="font-medium text-foreground">Komari GlassOps</span>
           </a>
         </DataTooltip>
       </div>

@@ -4,7 +4,7 @@ import type { NodeData } from '@/stores/nodes'
 import type { CurrencyCode, ExchangeRateSource } from '@/utils/financeHelper'
 import type { TopNodeMetric } from '@/utils/nodeMetricsHelper'
 import { Icon } from '@iconify/vue'
-import { useNow } from '@vueuse/core'
+import { useElementSize, useNow } from '@vueuse/core'
 import { computed, defineAsyncComponent, onMounted, ref } from 'vue'
 import NodeEarthGlobe from '@/components/NodeEarthGlobe.vue'
 import { CardX } from '@/components/ui/card-x'
@@ -26,7 +26,7 @@ import {
   isTrafficWarningNode,
 } from '@/utils/nodeMetricsHelper'
 import { getRegionDisplayName } from '@/utils/regionHelper'
-import { hasFreeNodeTag } from '@/utils/tagHelper'
+import { isFreeNode } from '@/utils/tagHelper'
 
 interface GeneralMetricCard {
   key: GeneralCardKey
@@ -63,6 +63,7 @@ const props = defineProps<{
   globeNodes?: NodeData[]
   transitionKey?: string
 }>()
+const DISTRIBUTION_FAMILY_SEPARATOR_RE = /[\s/_(]/
 const appStore = useAppStore()
 const nodesStore = useNodesStore()
 const FinanceDetailsDialog = defineAsyncComponent(() => import('@/components/FinanceDetailsDialog.vue'))
@@ -75,6 +76,8 @@ const exchangeRateUpdatedAt = ref<number | null>(null)
 const financeCurrency = ref<CurrencyCode>('CNY')
 const excludeFreeNodes = ref(true)
 const financeDetailsOpen = ref(false)
+const cardGridRef = ref<HTMLDivElement>()
+const { width: cardGridWidth } = useElementSize(cardGridRef)
 const currentTime = useNow({ interval: 1000 })
 const summaryNodes = computed(() => props.nodes ?? nodesStore.visibleNodes)
 const summaryTransitionKey = computed(() => props.transitionKey ?? nodesStore.visibleNodes.length)
@@ -108,6 +111,16 @@ function formatDecimal(value: number, digits = 1): string {
   if (!Number.isFinite(value))
     return '0'
   return value.toFixed(digits)
+}
+
+function formatDistributionSummary(value: string | undefined): string {
+  if (!value)
+    return '-'
+
+  const normalized = value.trim()
+  const family = normalized.split(DISTRIBUTION_FAMILY_SEPARATOR_RE, 1)[0] || normalized
+  const concise = family.length > 10 ? `${family.slice(0, 10)}…` : family
+  return concise === normalized ? concise : `${concise}…`
 }
 
 function formatTopNodeSpeed(metric: TopNodeMetric | null, fallback = '-'): { value: string, unit?: string, tooltip?: string } {
@@ -183,7 +196,7 @@ function formatExpiryNode(node: NodeData): string {
 }
 
 function getNodePeriodCostCNY(node: NodeData, periodDays: number): number {
-  if (excludeFreeNodes.value && hasFreeNodeTag(node.tags))
+  if (excludeFreeNodes.value && isFreeNode(node.price, node.tags))
     return 0
 
   return financeHelper.calculatePeriodCostCNY(node, exchangeRates.value, periodDays)
@@ -664,7 +677,7 @@ function getCardDefinition(key: GeneralCardKey): GeneralMetricCard {
         key: 'systemDistribution',
         label: '系统分布',
         icon: 'tabler:device-desktop',
-        value: systemDistribution.value[0]?.[0] ?? '-',
+        value: formatDistributionSummary(systemDistribution.value[0]?.[0]),
         unit: systemDistribution.value[0] ? `${systemDistribution.value[0][1]} 台` : undefined,
         tooltip: formatDistributionTooltip(systemDistribution.value),
       }
@@ -698,50 +711,81 @@ function getCardDefinition(key: GeneralCardKey): GeneralMetricCard {
   }
 }
 
-const tiledDefaultCardKeys: GeneralCardKey[] = [
-  'onlineNodes',
-  'remainingValue',
-  'monthlyCost',
-  'totalTraffic',
-  'uploadSpeed',
-  'downloadSpeed',
-]
 const baseVisibleCards = computed(() => appStore.generalCardOrder.map(getCardDefinition))
-const tiledDefaultCards = computed(() => tiledDefaultCardKeys.map(getCardDefinition))
 const showEarth = computed(() => !appStore.hideEarth)
 const isTiledEarth = computed(() => showEarth.value && appStore.earthRenderer === 'tiled')
-const visibleCards = computed(() => isTiledEarth.value ? tiledDefaultCards.value : baseVisibleCards.value)
+const visibleCards = computed(() => baseVisibleCards.value)
 const shouldRenderHeader = computed(() => showEarth.value || visibleCards.value.length > 0)
 const hasExtraCards = computed(() => visibleCards.value.length > 6)
+
+function getOverviewColumnCount(count: number, width: number): number {
+  if (count <= 1)
+    return 1
+
+  const maxColumns = width < 560
+    ? 2
+    : width < 900
+      ? 3
+      : width < 1500
+        ? 4
+        : 7
+
+  if (count <= 5)
+    return Math.min(count, maxColumns)
+
+  // Six cards keep the deliberately calm 3 × 2 composition. For larger
+  // even sets, prefer an exact divisor near four columns so rows are filled
+  // without widening only the final row. Odd sets may leave a short last row.
+  const candidates = count === 6
+    ? [3, 2]
+    : [4, 5, 6, 3, 7]
+  const exact = candidates.find(columns => columns <= maxColumns && count % columns === 0)
+  if (exact)
+    return exact
+
+  return Math.min(count <= 6 ? 3 : 4, maxColumns)
+}
+
+const overviewColumnCount = computed(() => getOverviewColumnCount(
+  visibleCards.value.length,
+  cardGridWidth.value || (typeof window === 'undefined' ? 1200 : window.innerWidth),
+))
+const cardGridStyle = computed<Record<string, string> | undefined>(() => {
+  if (showEarth.value && !isTiledEarth.value)
+    return undefined
+  return {
+    gridTemplateColumns: `repeat(${overviewColumnCount.value}, minmax(0, 1fr))`,
+  }
+})
 const wrapperClass = computed(() => {
   if (!showEarth.value)
-    return 'p-4 grid grid-cols-1 gap-2 h-auto'
+    return 'overview-summary p-3 grid grid-cols-1 gap-2 h-auto'
 
   if (isTiledEarth.value)
-    return 'p-3 sm:p-4 grid grid-cols-12 gap-2 sm:gap-3 h-auto min-h-[40rem] sm:min-h-[30rem] md:min-h-[36rem] lg:min-h-[40rem]'
+    return 'overview-summary p-3 grid grid-cols-12 gap-3 h-auto'
 
   return hasExtraCards.value
-    ? 'p-4 grid grid-cols-12 gap-2 h-auto md:min-h-58'
-    : 'p-4 grid grid-cols-12 grid-rows-1 gap-2 h-auto md:h-58'
+    ? 'overview-summary p-3 grid grid-cols-12 gap-2 h-auto md:min-h-52 xl:min-h-56 2xl:min-h-60'
+    : 'overview-summary p-3 grid grid-cols-12 grid-rows-1 gap-2 h-auto md:h-52 xl:h-56 2xl:h-60'
 })
 const earthClass = computed(() => {
   if (isTiledEarth.value)
-    return 'col-span-12 row-start-2 min-h-[18rem] h-[18rem] sm:h-[20rem] md:h-[24rem] lg:h-[28rem]'
+    return 'overview-earth col-span-12 row-start-2 min-h-[18rem] w-full'
 
-  return 'col-span-12 col-start-1 md:col-span-6 md:col-start-7 md:row-start-1'
+  return 'overview-earth overview-earth--globe col-span-12 col-start-1 md:col-span-6 md:col-start-7 md:row-start-1 md:self-start min-[1800px]:col-span-7 min-[1800px]:col-start-6'
 })
 const cardGridClass = computed(() => {
   if (!showEarth.value)
-    return 'col-span-1 grid grid-cols-3 md:grid-cols-6 gap-2'
+    return 'overview-card-grid col-span-1 grid auto-rows-[4.75rem] gap-2 md:auto-rows-[6rem]'
 
   if (isTiledEarth.value)
-    return 'col-span-12 row-start-1 z-9 grid grid-cols-12 auto-rows-[4.75rem] sm:auto-rows-[5rem] md:auto-rows-[5.8rem] gap-2 sm:gap-3'
+    return 'overview-card-grid col-span-12 row-start-1 z-9 grid auto-rows-[5rem] gap-2 md:auto-rows-[6.15rem]'
 
   return hasExtraCards.value
-    ? 'h-auto -mt-42 md:mt-0 col-span-12 row-start-3 z-9 md:h-auto md:col-span-6 md:row-start-1 grid grid-cols-12 auto-rows-[5rem] md:auto-rows-[7rem] gap-2'
-    : 'h-42 -mt-42 md:mt-0 col-span-12 row-start-3 z-9 md:h-auto md:col-span-6 md:row-start-1 grid grid-cols-12 grid-rows-2 gap-2'
+    ? 'overview-card-grid h-auto -mt-42 md:mt-0 col-span-12 row-start-3 z-9 md:h-auto md:col-span-6 md:row-start-1 min-[1800px]:col-span-5 grid grid-cols-12 auto-rows-[4.75rem] md:auto-rows-[6rem] xl:auto-rows-[6.5rem] gap-2'
+    : 'overview-card-grid h-42 -mt-42 md:mt-0 col-span-12 row-start-3 z-9 md:h-auto md:col-span-6 md:row-start-1 min-[1800px]:col-span-5 grid grid-cols-12 grid-rows-2 gap-2'
 })
-const cardClass = 'group relative z-10 h-full bg-background/50 border-none hover:bg-background backdrop-blur-sm md:backdrop-blur-none transition-all'
+const cardClass = 'general-metric-card group relative z-10 h-full border-none backdrop-blur-sm md:backdrop-blur-none transition-all'
 const cardPositionClasses = [
   'col-span-4 row-span-1 col-start-1 row-start-1',
   'col-span-4 row-span-1 col-start-1 row-start-2',
@@ -750,26 +794,24 @@ const cardPositionClasses = [
   'col-span-4 row-span-1 col-start-9 row-start-1',
   'col-span-4 row-span-1 col-start-9 row-start-2',
 ]
-const tiledCardPositionClasses = [
-  'col-span-6 sm:col-span-3 row-span-1 sm:col-start-1 row-start-1',
-  'col-span-6 sm:col-span-3 row-span-1 sm:col-start-4 row-start-1',
-  'col-span-6 sm:col-span-3 row-span-1 sm:col-start-7 row-start-2 sm:row-start-1',
-  'col-span-6 sm:col-span-3 row-span-1 sm:col-start-10 row-start-2 sm:row-start-1',
-  'col-span-6 sm:col-span-3 row-span-1 sm:col-start-1 row-start-3 sm:row-start-2',
-  'col-span-6 sm:col-span-3 row-span-1 sm:col-start-4 row-start-3 sm:row-start-2',
-  'col-span-6 sm:col-span-3 row-span-1 sm:col-start-7 row-start-4 sm:row-start-2',
-  'col-span-6 sm:col-span-3 row-span-1 sm:col-start-10 row-start-4 sm:row-start-2',
-]
 const unitClass = 'text-[11px] md:text-xs font-medium text-muted-foreground truncate'
 
 function getCardPositionClass(index: number): string {
   if (!showEarth.value)
-    return 'col-span-1 min-h-18 md:min-h-28'
+    return 'min-h-18 md:min-h-28'
 
   if (isTiledEarth.value)
-    return tiledCardPositionClasses[index] ?? 'col-span-6 sm:col-span-3 row-span-1'
+    return 'row-span-1'
 
   return cardPositionClasses[index] ?? 'col-span-4 row-span-1'
+}
+
+function getCardHoverContent(card: GeneralMetricCard): string {
+  if (card.tooltip)
+    return `${card.label}\n${card.tooltip}`
+
+  const value = [card.value, card.unit].filter(Boolean).join(' ')
+  return `${card.label}\n${value}`
 }
 
 function activateCard(card: GeneralMetricCard) {
@@ -824,34 +866,41 @@ onMounted(async () => {
       :class="earthClass"
     />
 
-    <div v-if="visibleCards.length > 0" :class="cardGridClass">
-      <CardX
+    <div
+      v-if="visibleCards.length > 0"
+      ref="cardGridRef"
+      :class="cardGridClass"
+      :style="cardGridStyle"
+    >
+      <DataTooltip
         v-for="(card, index) in visibleCards"
         :key="card.key"
-        hoverable
-        :class="[cardClass, getCardPositionClass(index), card.action && 'cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring']"
-        content-class="h-full !p-3"
-        :role="card.action ? 'button' : undefined"
-        :tabindex="card.action ? 0 : undefined"
-        :aria-label="card.action ? `查看${card.label}明细` : undefined"
-        @click="activateCard(card)"
-        @keydown="handleCardKeydown($event, card)"
+        as="div"
+        placement="top"
+        :content="getCardHoverContent(card)"
+        :data-general-card-key="card.key"
+        class="block h-full min-w-0"
+        :class="getCardPositionClass(index)"
+        content-class="whitespace-pre-line px-2.5 py-2 leading-4"
       >
-        <div class="flex h-full flex-col justify-between gap-1">
-          <div class="flex items-start justify-between gap-2">
-            <span class="text-xs font-medium tracking-wider text-muted-foreground truncate">{{ card.label }}</span>
-            <Icon
-              :icon="card.icon" :width="20" :height="20"
-              class="shrink-0 text-slate-500/20 group-hover:text-slate-500 transition-colors"
-            />
-          </div>
-          <DataTooltip
-            as="span"
-            placement="top"
-            :content="card.tooltip"
-            class="min-w-0"
-            content-class="whitespace-pre px-2 py-1 left-0 -translate-x-0 leading-normal"
-          >
+        <CardX
+          hoverable
+          :class="[cardClass, card.action && 'cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring']"
+          content-class="h-full !p-3"
+          :role="card.action ? 'button' : undefined"
+          :tabindex="card.action ? 0 : undefined"
+          :aria-label="card.action ? `查看${card.label}明细` : undefined"
+          @click="activateCard(card)"
+          @keydown="handleCardKeydown($event, card)"
+        >
+          <div class="flex h-full flex-col justify-between gap-1">
+            <div class="flex items-start justify-between gap-2">
+              <span class="text-xs font-medium tracking-wider text-muted-foreground truncate">{{ card.label }}</span>
+              <Icon
+                :icon="card.icon" :width="20" :height="20"
+                class="shrink-0 text-slate-500/20 group-hover:text-slate-500 transition-colors"
+              />
+            </div>
             <Transition v-bind="metricSwitchTransitionProps">
               <div
                 :key="`${card.key}-${summaryTransitionKey}`"
@@ -866,9 +915,9 @@ onMounted(async () => {
                 </span>
               </div>
             </Transition>
-          </DataTooltip>
-        </div>
-      </CardX>
+          </div>
+        </CardX>
+      </DataTooltip>
     </div>
   </div>
 
@@ -890,6 +939,22 @@ onMounted(async () => {
 </template>
 
 <style scoped>
+.overview-earth--globe {
+  /*
+   * The shell is square, so this one diameter controls both axes. On desktop
+   * it grows with viewport width, but is capped by the usable viewport height
+   * and an absolute 49rem ceiling. This keeps the top edge inside short,
+   * ultrawide windows instead of enlarging only from vw.
+   */
+  --earth-max-size: min(100%, calc(100svh - 7rem), 32rem);
+}
+
+@media (min-width: 768px) {
+  .overview-earth--globe {
+    --earth-max-size: min(44vw, calc(100svh - 8.5rem), 49rem);
+  }
+}
+
 .metric-switch-enter-active,
 .metric-switch-leave-active {
   transition:

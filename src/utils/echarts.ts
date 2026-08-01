@@ -3,9 +3,10 @@
  *
  * 统一注册所有图表组件，避免在各个组件中重复注册
  */
-import { LineChart } from 'echarts/charts'
+import { BarChart, LineChart, ScatterChart } from 'echarts/charts'
 import {
   DataZoomComponent,
+  GraphicComponent,
   GridComponent,
   LegendComponent,
   TitleComponent,
@@ -16,7 +17,10 @@ import { CanvasRenderer } from 'echarts/renderers'
 
 // 一次性注册所有需要的 ECharts 组件
 use([
+  BarChart,
   LineChart,
+  ScatterChart,
+  GraphicComponent,
   GridComponent,
   TooltipComponent,
   LegendComponent,

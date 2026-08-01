@@ -14,7 +14,7 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import * as financeHelper from '@/utils/financeHelper'
-import { formatPriceWithCycle, getDaysUntilExpired, getExpireStatus, hasFreeNodeTag } from '@/utils/tagHelper'
+import { formatPriceWithCycle, getDaysUntilExpired, getExpireStatus, isFreeNode } from '@/utils/tagHelper'
 
 type FinanceTab = 'fixed' | 'metered' | 'rates'
 interface UsageSnapshot {
@@ -45,7 +45,7 @@ const emit = defineEmits<{
 }>()
 
 const activeTab = ref<FinanceTab>('fixed')
-const visibleNodes = computed(() => props.nodes.filter(node => !props.excludeFree || !hasFreeNodeTag(node.tags)))
+const visibleNodes = computed(() => props.nodes.filter(node => !props.excludeFree || !isFreeNode(node.price, node.tags)))
 const snapshotTakenAt = ref(Date.now())
 const usageSnapshots = ref<Map<string, UsageSnapshot>>(new Map())
 const selectedNodeUuid = ref(visibleNodes.value[0]?.uuid ?? '')
@@ -106,6 +106,7 @@ function formatPricingAmount(amount: number): string {
 }
 
 const fixedRows = computed(() => visibleNodes.value.map((node) => {
+  const free = isFreeNode(node.price, node.tags)
   const remainingCNY = financeHelper.calculateRemainingValueCNY(node, props.rates, props.now)
   const monthlyCNY = financeHelper.calculateMonthlyCostCNY(node, props.rates)
   const expireStatus = getExpireStatus(node.expired_at)
@@ -120,7 +121,7 @@ const fixedRows = computed(() => visibleNodes.value.map((node) => {
           ? '今天'
           : `${days} 天`
 
-  return { node, remainingCNY, monthlyCNY, expiryLabel }
+  return { node, free, remainingCNY, monthlyCNY, expiryLabel }
 }))
 
 const selectedEstimate = computed(() => {
@@ -355,7 +356,7 @@ function formatTraffic(tib: number): string {
                     {{ row.expiryLabel }}
                   </td>
                   <td class="whitespace-nowrap px-3 py-2.5">
-                    {{ formatDisplayAmount(row.remainingCNY) }}
+                    {{ row.free ? '无' : formatDisplayAmount(row.remainingCNY) }}
                   </td>
                   <td class="whitespace-nowrap px-3 py-2.5 text-right font-semibold tabular-nums">
                     {{ formatDisplayAmount(row.monthlyCNY) }}

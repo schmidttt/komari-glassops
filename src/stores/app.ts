@@ -1,10 +1,12 @@
 import type { PermissionKey, VerifyLoginOptions } from '@/services/auth.service'
 import type { MeInfo, PublicSettings } from '@/utils/api'
 import type { ByteDecimalsConfig } from '@/utils/helper'
+import type { HomePingHours } from '@/utils/homePingConfig'
 import { useStorageAsync } from '@vueuse/core'
 import { defineStore } from 'pinia'
 import { computed, ref, watch } from 'vue'
 import { getAuthSession, requirePermission, setAuthSessionFromLogin, verifyLogin } from '@/services/auth.service'
+import { HOME_PING_DEFAULT_HOURS, isHomePingHours, parseHomePingTaskSelections } from '@/utils/homePingConfig'
 
 export type ThemeMode = 'auto' | 'light' | 'dark'
 export type ManagedThemeMode = 'beijing' | 'light' | 'dark'
@@ -42,7 +44,7 @@ export type GeneralCardKey
     | 'yearlyCost'
 
 export type HomeQuickControlKey
-  = | 'default'
+  = | 'favorite'
     | 'monthlyCost'
     | 'totalTraffic'
     | 'upload'
@@ -228,7 +230,7 @@ const LEGACY_GENERAL_CARD_SETTING_KEYS: Partial<Record<GeneralCardKey, string>> 
 }
 
 const DEFAULT_HOME_QUICK_CONTROL_ORDER: HomeQuickControlKey[] = [
-  'default',
+  'favorite',
   'monthlyCost',
   'totalTraffic',
   'peak',
@@ -353,9 +355,9 @@ const GENERAL_CARD_PRESETS: Record<GeneralCardPreset, GeneralCardKey[]> = {
 }
 
 const HOME_QUICK_CONTROL_PRESETS: Record<HomeQuickControlPreset, HomeQuickControlKey[]> = {
-  basic: ['default', 'monthlyCost', 'peak', 'offline'],
-  traffic: ['default', 'totalTraffic', 'peak'],
-  ops: ['default', 'monthlyCost', 'offline', 'highLoad', 'expiring'],
+  basic: ['favorite', 'monthlyCost', 'peak', 'offline'],
+  traffic: ['favorite', 'totalTraffic', 'peak'],
+  ops: ['favorite', 'monthlyCost', 'offline', 'highLoad', 'expiring'],
   full: DEFAULT_HOME_QUICK_CONTROL_ORDER,
   custom: DEFAULT_HOME_QUICK_CONTROL_ORDER,
 }
@@ -709,7 +711,7 @@ function parseHomeQuickControlPreset(value: unknown): HomeQuickControlPreset {
 }
 
 function normalizeHomeQuickControlOrder(keys: HomeQuickControlKey[]): HomeQuickControlKey[] {
-  return ['default', ...keys.filter(key => key !== 'default')]
+  return [...new Set(keys)]
 }
 
 function normalizeThemeSettings(raw: unknown): ThemeSettings {
@@ -887,13 +889,40 @@ const useAppStore = defineStore('app', () => {
   const lang = ref<Lang>('zh-CN')
   const publicSettings = ref<PublicSettings>()
   const nodeSelectedGroup = useStorageAsync<string>('nodeSelectedGroup', 'all', localStorage)
+  const favoriteNodeIds = useStorageAsync<string[]>('theme:favorite-nodes:v1', [], localStorage)
   const isLoggedIn = ref<boolean>(getAuthSession().authenticated)
   const authStatus = ref(getAuthSession().status)
   const privateFeaturesAllowed = computed(() => authStatus.value === 'authenticated')
   const connectionError = ref<boolean>(false)
   const homeAdvancedToolsVisible = ref(false)
+  const favoriteNodeIdSet = computed(() => new Set(
+    (Array.isArray(favoriteNodeIds.value) ? favoriteNodeIds.value : [])
+      .filter((id): id is string => typeof id === 'string' && Boolean(id.trim())),
+  ))
+
+  function isFavoriteNode(uuid: string): boolean {
+    return favoriteNodeIdSet.value.has(uuid)
+  }
+
+  function toggleFavoriteNode(uuid: string): void {
+    const normalized = uuid.trim()
+    if (!normalized)
+      return
+    favoriteNodeIds.value = favoriteNodeIdSet.value.has(normalized)
+      ? [...favoriteNodeIdSet.value].filter(id => id !== normalized)
+      : [...favoriteNodeIdSet.value, normalized]
+  }
+  const homePingSettingsVisible = ref(false)
+  const storedHomePingHours = useStorageAsync<HomePingHours>('homePingHours', HOME_PING_DEFAULT_HOURS, localStorage)
 
   const themeSettings = computed(() => normalizeThemeSettings(publicSettings.value?.theme_settings))
+  const homePingTaskSelections = computed(() => parseHomePingTaskSelections(themeSettings.value.homePingTaskSelections))
+  const homePingHours = computed<HomePingHours>({
+    get: () => isHomePingHours(storedHomePingHours.value) ? storedHomePingHours.value : HOME_PING_DEFAULT_HOURS,
+    set: (value) => {
+      storedHomePingHours.value = isHomePingHours(value) ? value : HOME_PING_DEFAULT_HOURS
+    },
+  })
   const visitorAuditSupported = computed(() => typeof publicSettings.value?.visitor_audit_enabled === 'boolean')
   const visitorAuditEnabled = computed(() => publicSettings.value?.visitor_audit_enabled === true)
 
@@ -1081,13 +1110,6 @@ const useAppStore = defineStore('app', () => {
     return normalizeHomeQuickControlOrder([...HOME_QUICK_CONTROL_PRESETS[preset]])
   })
 
-  const homeQuickDefaultControl = computed<HomeQuickControlKey>(() => {
-    const value = themeSettings.value.homeQuickDefaultControl
-    if (typeof value === 'string' && isHomeQuickControlKey(value) && homeQuickControlOrder.value.includes(value))
-      return value
-    return 'default'
-  })
-
   const nodeListMetadataEnabled = computed<boolean>(() => readBooleanSetting(themeSettings.value, 'nodeListMetadataEnabled', true))
 
   const nodeListMetadataFields = computed<NodeListMetadataField[]>(() => {
@@ -1209,12 +1231,19 @@ const useAppStore = defineStore('app', () => {
 
   const managedThemeMode = computed<ManagedThemeMode>(() => {
     const value = themeSettings.value.themeMode
-    return isValidManagedThemeMode(value) ? value : 'beijing'
+    return isValidManagedThemeMode(value) ? value : 'dark'
   })
 
   const isBeijingDaytime = computed<boolean>(() => {
     const hour = getBeijingHour(beijingTimeTick.value)
     return hour >= 7 && hour < 19
+  })
+
+  const managedIsDark = computed(() => {
+    if (managedThemeMode.value === 'beijing')
+      return !isBeijingDaytime.value
+
+    return managedThemeMode.value === 'dark'
   })
 
   // 计算当前是否为暗色模式。本机按钮选择 auto 时跟随后台托管设置；手动选择浅色/深色时仅覆盖当前浏览器。
@@ -1224,11 +1253,7 @@ const useAppStore = defineStore('app', () => {
       return false
     if (localMode === 'dark')
       return true
-
-    if (managedThemeMode.value === 'beijing')
-      return !isBeijingDaytime.value
-
-    return managedThemeMode.value === 'dark'
+    return managedIsDark.value
   })
 
   const resolvedThemeMode = computed<'light' | 'dark'>(() => isDark.value ? 'dark' : 'light')
@@ -1247,14 +1272,7 @@ const useAppStore = defineStore('app', () => {
       return
     }
 
-    const nextMode: Record<ThemeMode, ThemeMode> = {
-      auto: 'light',
-      light: 'dark',
-      dark: 'auto',
-    }
-
-    const currentMode = isValidThemeMode(themeMode.value) ? themeMode.value : 'auto'
-    themeMode.value = nextMode[currentMode]
+    themeMode.value = isDark.value ? 'light' : 'dark'
   }
 
   function syncAuthState() {
@@ -1289,6 +1307,10 @@ const useAppStore = defineStore('app', () => {
     resolvedThemeMode,
     lang,
     nodeSelectedGroup,
+    favoriteNodeIds,
+    favoriteNodeIdSet,
+    isFavoriteNode,
+    toggleFavoriteNode,
     nodeViewMode,
     defaultViewMode,
     nodeCardSize,
@@ -1307,6 +1329,9 @@ const useAppStore = defineStore('app', () => {
     generalCardOrder,
     homeToolsEnabled,
     homeAdvancedToolsVisible,
+    homePingSettingsVisible,
+    homePingTaskSelections,
+    homePingHours,
     glassColorPreset,
     glassCustomColors,
     colorVisionMode,
@@ -1315,7 +1340,6 @@ const useAppStore = defineStore('app', () => {
     visitorAuditEnabled,
     homeQuickControlsEnabled,
     homeQuickControlOrder,
-    homeQuickDefaultControl,
     nodeListMetadataEnabled,
     nodeListMetadataFields,
     nodeListCustomTagsVisible,

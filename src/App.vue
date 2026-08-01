@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { Icon } from '@iconify/vue'
-import { nextTick, onMounted, onUnmounted, ref } from 'vue'
+import { computed, defineAsyncComponent, nextTick, onMounted, onUnmounted, ref } from 'vue'
+import { useRoute } from 'vue-router'
 import { Alert, AlertAction, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
 import { Toaster } from '@/components/ui/sonner'
@@ -14,6 +15,10 @@ import LoadingCover from './components/LoadingCover.vue'
 import Provider from './components/Provider.vue'
 
 const appStore = useAppStore()
+const route = useRoute()
+const ThemeSettingsView = defineAsyncComponent(() => import('@/views/ThemeSettingsView.vue'))
+const isThemeSettingsMode = computed(() => route.query['glassops-settings'] === '1')
+const isEmbeddedThemeSettings = computed(() => isThemeSettingsMode.value && route.query.embedded === '1')
 useVisitorPageAudit()
 
 const isReady = ref(false)
@@ -59,7 +64,7 @@ onUnmounted(() => {
 
 <template>
   <Provider>
-    <Background />
+    <Background v-if="!isEmbeddedThemeSettings" />
     <Transition
       :css="!appStore.disablePageAnimation"
       enter-active-class="transition-opacity duration-200 ease-out" enter-from-class="opacity-0"
@@ -68,16 +73,16 @@ onUnmounted(() => {
     >
       <LoadingCover v-if="appStore.loading" />
     </Transition>
-    <Header />
+    <Header v-if="!isEmbeddedThemeSettings" />
     <Transition
       :css="!appStore.disablePageAnimation"
       enter-active-class="transition-all duration-300 ease-out"
       enter-from-class="opacity-0 translate-y-2"
       enter-to-class="opacity-100 translate-y-0"
     >
-      <div v-if="!appStore.loading" class="app-shell">
-        <main class="min-h-screen overflow-hidden">
-          <div v-if="appStore.connectionError" class="relative z-10 mx-auto max-w-[1280px] px-4 pt-4">
+      <div v-if="!appStore.loading" class="app-shell" :class="{ 'theme-settings-embedded-shell': isEmbeddedThemeSettings }">
+        <main class="min-h-screen" :class="isEmbeddedThemeSettings ? 'overflow-visible' : 'overflow-x-hidden'">
+          <div v-if="appStore.connectionError" class="relative z-10 mx-auto w-full max-w-[2200px] px-4 pt-4">
             <Alert variant="destructive" class="!pr-28 border-none bg-destructive/10 backdrop-blur-xs rounded-md">
               <Icon icon="tabler:plug-connected-x" />
               <AlertTitle>RPC 服务错误</AlertTitle>
@@ -90,8 +95,9 @@ onUnmounted(() => {
               </AlertAction>
             </Alert>
           </div>
-          <div class="max-w-[1280px] mx-auto">
-            <RouterView v-slot="{ Component }">
+          <div class="mx-auto w-full max-w-[2200px]">
+            <ThemeSettingsView v-if="isThemeSettingsMode" />
+            <RouterView v-else v-slot="{ Component }">
               <Transition
                 :css="!appStore.disablePageAnimation"
                 enter-active-class="transition-all duration-300 ease-out"
@@ -107,7 +113,7 @@ onUnmounted(() => {
             </RouterView>
           </div>
         </main>
-        <Footer />
+        <Footer v-if="!isEmbeddedThemeSettings" />
       </div>
     </Transition>
     <Toaster rich-colors close-button position="top-center" />

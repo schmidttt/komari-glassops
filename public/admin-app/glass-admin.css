@@ -256,6 +256,182 @@ aside,
   background: rgb(24 168 121 / 28%);
 }
 
+.glass-theme-managed-page {
+  --glass-managed-header-height: 3.25rem;
+
+  position: relative;
+  isolation: isolate;
+  font-size: 0.95rem;
+}
+
+.glass-theme-managed-header {
+  position: sticky !important;
+  z-index: 42;
+  top: 0;
+  margin: -0.5rem -0.5rem 0 !important;
+  border: 1px solid var(--border);
+  border-bottom: 0;
+  border-radius: 10px 10px 0 0;
+  background: rgb(248 251 252 / 84%);
+  box-shadow:
+    0 10px 30px rgb(18 27 34 / 10%),
+    inset 0 1px 0 rgb(255 255 255 / 52%);
+  padding: 0.68rem 0.75rem 0.48rem;
+  backdrop-filter: blur(20px) saturate(150%);
+}
+
+.dark .glass-theme-managed-header {
+  background: rgb(10 16 25 / 86%);
+  box-shadow:
+    0 12px 34px rgb(0 0 0 / 26%),
+    inset 0 1px 0 rgb(255 255 255 / 7%);
+}
+
+.glass-theme-managed-header > button {
+  min-width: 4.5rem;
+  box-shadow: 0 8px 22px rgb(7 127 91 / 18%);
+}
+
+.glass-theme-managed-nav {
+  position: sticky;
+  z-index: 41;
+  top: var(--glass-managed-header-height);
+  display: flex;
+  gap: 0.35rem;
+  margin: -1rem -0.5rem 0.4rem;
+  overflow-x: auto;
+  border: 1px solid var(--border);
+  border-top: 0;
+  border-radius: 0 0 10px 10px;
+  background: rgb(248 251 252 / 80%);
+  box-shadow: 0 12px 28px rgb(18 27 34 / 8%);
+  padding: 0.26rem 0.48rem 0.5rem;
+  scrollbar-width: none;
+  backdrop-filter: blur(20px) saturate(150%);
+}
+
+.glass-theme-managed-separator {
+  display: none !important;
+}
+
+.glass-theme-managed-nav::-webkit-scrollbar {
+  display: none;
+}
+
+.dark .glass-theme-managed-nav {
+  background: rgb(10 16 25 / 82%);
+  box-shadow: 0 14px 32px rgb(0 0 0 / 22%);
+}
+
+.glass-theme-managed-nav button {
+  position: relative;
+  flex: none;
+  min-height: 2rem;
+  border: 1px solid transparent;
+  border-radius: 999px !important;
+  background: transparent;
+  padding: 0.36rem 0.72rem;
+  color: var(--muted-foreground);
+  font: inherit;
+  font-size: 0.86rem;
+  font-weight: 650;
+  line-height: 1.15;
+  white-space: nowrap;
+  cursor: pointer;
+  transition:
+    border-color 160ms ease,
+    background-color 160ms ease,
+    color 160ms ease,
+    box-shadow 160ms ease;
+}
+
+.glass-theme-managed-nav button:hover {
+  border-color: color-mix(in srgb, var(--primary) 20%, transparent);
+  background: color-mix(in srgb, var(--primary) 8%, transparent);
+  color: var(--foreground);
+}
+
+.glass-theme-managed-nav button.is-active {
+  border-color: color-mix(in srgb, var(--primary) 28%, transparent);
+  background: color-mix(in srgb, var(--primary) 14%, transparent);
+  box-shadow:
+    0 5px 16px color-mix(in srgb, var(--primary) 12%, transparent),
+    inset 0 1px 0 rgb(255 255 255 / 38%);
+  color: var(--primary);
+}
+
+.dark .glass-theme-managed-nav button.is-active {
+  color: var(--accent-11);
+  box-shadow:
+    0 6px 18px rgb(0 0 0 / 20%),
+    inset 0 1px 0 rgb(255 255 255 / 8%);
+}
+
+.glass-theme-managed-section {
+  position: relative;
+  margin-top: 1.35rem !important;
+  border-left: 3px solid currentColor;
+  border-radius: 3px;
+  padding-left: 0.65rem;
+  scroll-margin-top: calc(var(--glass-managed-header-height) + 4rem);
+}
+
+.glass-theme-managed-section-tone-1,
+.glass-theme-managed-section-tone-2,
+.glass-theme-managed-section-tone-3,
+.glass-theme-managed-section-tone-4,
+.glass-theme-managed-section-tone-5,
+.glass-theme-managed-section-tone-6,
+.glass-theme-managed-section-tone-7 {
+  color: var(--primary) !important;
+}
+
+.dark .glass-theme-managed-section-tone-1,
+.dark .glass-theme-managed-section-tone-2,
+.dark .glass-theme-managed-section-tone-3,
+.dark .glass-theme-managed-section-tone-4,
+.dark .glass-theme-managed-section-tone-5,
+.dark .glass-theme-managed-section-tone-6,
+.dark .glass-theme-managed-section-tone-7 {
+  color: var(--accent-11) !important;
+}
+
+.glass-theme-managed-page .rt-Heading.mt-4 {
+  font-size: 1.12rem !important;
+  line-height: 1.35 !important;
+}
+
+.glass-theme-managed-page label,
+.glass-theme-managed-page .rt-Text {
+  font-size: 0.9rem;
+}
+
+.glass-theme-managed-bottom-save {
+  display: none !important;
+}
+
+@media (max-width: 640px) {
+  .glass-theme-managed-header {
+    margin-right: -0.25rem !important;
+    margin-left: -0.25rem !important;
+    padding-right: 0.55rem;
+    padding-left: 0.55rem;
+  }
+
+  .glass-theme-managed-nav {
+    margin-right: -0.25rem;
+    margin-left: -0.25rem;
+    padding-right: 0.35rem;
+    padding-left: 0.35rem;
+  }
+
+  .glass-theme-managed-nav button {
+    padding-right: 0.62rem;
+    padding-left: 0.62rem;
+    font-size: 0.8rem;
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,

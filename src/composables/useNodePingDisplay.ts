@@ -1,6 +1,7 @@
 import type { MaybeRefOrGetter } from 'vue'
-import { computed } from 'vue'
+import { computed, toValue } from 'vue'
 import { useNodePingStats } from '@/composables/useNodePingStats'
+import { PING_SUMMARY_MAX_COUNT } from '@/constants/load'
 import { useAppStore } from '@/stores/app'
 import { formatDateTime } from '@/utils/helper'
 
@@ -13,6 +14,9 @@ export interface NodePingBar {
 }
 
 interface UseNodePingDisplayOptions {
+  hours?: MaybeRefOrGetter<number>
+  taskIds?: MaybeRefOrGetter<number[] | undefined>
+  enabled?: MaybeRefOrGetter<boolean>
   loadingDisplayText?: string
   emptyDisplayText?: string
   loadingPanelTooltipText?: Partial<Record<NodePingMetric, string>>
@@ -34,15 +38,21 @@ function getLatencyToneClass(latency: number): string {
 }
 
 function getLossToneClass(loss: number): string {
+  if (loss <= 0)
+    return 'bg-emerald-500'
   if (loss <= 1)
-    return 'bg-signal-1'
+    return 'bg-rose-300'
   if (loss <= 3)
-    return 'bg-signal-2'
-  if (loss <= 6)
-    return 'bg-signal-3 ping-signal-pattern-2'
-  if (loss <= 9)
-    return 'bg-signal-4 ping-signal-pattern-3'
-  return 'bg-signal-5 ping-signal-pattern-4'
+    return 'bg-rose-400'
+  if (loss <= 10)
+    return 'bg-rose-500'
+  if (loss <= 25)
+    return 'bg-red-500'
+  if (loss <= 50)
+    return 'bg-red-600'
+  if (loss <= 75)
+    return 'bg-red-500 saturate-150'
+  return 'bg-red-400 saturate-200'
 }
 
 export function useNodePingDisplay(
@@ -52,21 +62,26 @@ export function useNodePingDisplay(
   const appStore = useAppStore()
 
   const pingStatsEnabled = computed(() => {
+    if (toValue(options.enabled) === false)
+      return false
     if (appStore.publicSettings?.record_enabled === false)
       return false
     return appStore.publicSettings?.ping_record_preserve_time !== 0
   })
 
   const pingStatsHours = computed(() => {
+    const requestedHours = Math.max(1, Math.floor(toValue(options.hours) || 1))
     const preserveTime = appStore.publicSettings?.ping_record_preserve_time
     if (typeof preserveTime === 'number' && preserveTime > 0)
-      return Math.min(preserveTime, 1)
-    return 1
+      return Math.min(preserveTime, requestedHours)
+    return requestedHours
   })
 
   const pingStats = useNodePingStats(uuid, {
     hours: pingStatsHours,
     enabled: pingStatsEnabled,
+    maxCount: PING_SUMMARY_MAX_COUNT,
+    taskIds: options.taskIds,
   })
 
   function buildPingBars(metric: NodePingMetric): NodePingBar[] {
@@ -85,10 +100,10 @@ export function useNodePingDisplay(
             ? getLatencyToneClass(value)
             : getLossToneClass(value),
         tooltip: value === null
-          ? `${formatDateTime(point.time, 'HH:mm:ss')}\n无采样数据`
+          ? `${formatDateTime(point.time, 'HH:mm:ss')}\n${metric === 'latency' ? 'RTT' : 'Loss'}: 无采样数据`
           : metric === 'latency'
-            ? `${formatDateTime(point.time, 'HH:mm:ss')}\n${Math.round(value)} ms`
-            : `${formatDateTime(point.time, 'HH:mm:ss')}\n${value.toFixed(1)}%`,
+            ? `${formatDateTime(point.time, 'HH:mm:ss')}\nRTT: ${Math.round(value)} ms`
+            : `${formatDateTime(point.time, 'HH:mm:ss')}\nLoss: ${value.toFixed(1)}%`,
       }
     })
   }
@@ -107,7 +122,7 @@ export function useNodePingDisplay(
     return Array.from({ length: EMPTY_PING_BAR_COUNT }, (_, index) => ({
       key: `${metric}-empty-${index}`,
       className: 'bg-muted-foreground/10',
-      tooltip,
+      tooltip: `${metric === 'latency' ? 'RTT' : 'Loss'}: ${tooltip}`,
     }))
   }
 

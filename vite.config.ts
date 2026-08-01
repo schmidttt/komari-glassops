@@ -41,7 +41,9 @@ function getThemeVersion(): string {
 
 function getCommitHash(): string {
   try {
-    return execSync('git rev-parse --short HEAD', { encoding: 'utf-8' }).trim()
+    const hash = execSync('git rev-parse --short HEAD', { encoding: 'utf-8' }).trim()
+    const dirty = execSync('git status --porcelain --untracked-files=normal', { encoding: 'utf-8' }).trim()
+    return dirty ? `${hash}-dirty` : hash
   }
   catch {
     return 'unknown'
@@ -52,7 +54,8 @@ function getCommitHash(): string {
  * Vite 插件：构建后打包 Komari 主题 Zip
  * theme.zip
  * ├── komari-theme.json
- * ├── preview.png
+ * ├── preview.png                 # compatibility copy
+ * ├── preview-v{version}.png      # manifest-referenced cache-busting copy
  * └── dist/
  */
 function komariThemeZip(): Plugin {
@@ -61,7 +64,8 @@ function komariThemeZip(): Plugin {
     apply: 'build',
     closeBundle: async () => {
       const commitHash = getCommitHash()
-      const zipFileName = `komari-theme-Glassmorphism-build-${commitHash}.zip`
+      const version = getThemeVersion()
+      const zipFileName = `komari-glassops-v${version}-build-${commitHash}.zip`
       const distDir = resolve(__dirname, 'dist')
       const previewPath = resolve(__dirname, 'docs/preview.png')
       const outputPath = resolve(__dirname, zipFileName)

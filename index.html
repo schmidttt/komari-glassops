@@ -51,19 +51,7 @@
           if (!('noModule' in document.createElement('script'))) root.classList.add('no-esm')
 
           var mode = localStorage.getItem('themeMode')
-          var isDark = mode === 'dark'
-
-          if (mode !== 'dark' && mode !== 'light') {
-            var hour = Number(
-              new Intl.DateTimeFormat('en-US', {
-                hour: '2-digit',
-                hour12: false,
-                timeZone: 'Asia/Shanghai',
-              }).format(new Date()),
-            )
-            if (hour === 24) hour = 0
-            isDark = Number.isFinite(hour) ? hour < 7 || hour >= 19 : true
-          }
+          var isDark = mode !== 'light'
 
           root.classList.toggle('dark', isDark)
           root.style.colorScheme = isDark ? 'dark' : 'light'

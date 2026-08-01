@@ -332,6 +332,10 @@ export function hasFreeNodeTag(tags: string | undefined): boolean {
   return parseTags(tags).some(tag => tag.text === '白嫖中')
 }
 
+export function isFreeNode(price: number | undefined, tags?: string): boolean {
+  return Number(price) === -1 || hasFreeNodeTag(tags)
+}
+
 /**
  * 格式化价格显示
  * @param price 价格
@@ -362,6 +366,8 @@ export function formatPriceWithCycle(
   lang: 'zh-CN' | 'en-US' = 'zh-CN',
 ): string {
   const priceText = formatPrice(price, currency, lang)
+  if (price === -1)
+    return priceText
   const cycleText = getBillingCycleText(billingCycle, lang)
   return `${priceText} / ${cycleText}`
 }
@@ -369,11 +375,11 @@ export function formatPriceWithCycle(
 const TRAILING_ZERO_REGEX = /\.?0+$/
 
 /**
- * 计算剩余价值（按剩余天数占一个计费周期的比例折算）
+ * 计算剩余价值（按剩余天数占计费周期的比例折算）
  * - 价格 <= 0：返回 0
  * - 已过期：返回 0
  * - 一次性 / 未知周期（billingCycle <= 0）：返回全额价格
- * - 折算比例上限为 1，不超过一个计费周期的价格
+ * - 剩余多个计费周期时按完整剩余周期累计
  * @param price 价格
  * @param billingCycle 计费周期（天）
  * @param expiredAt 过期时间
@@ -397,7 +403,7 @@ export function getRemainingValue(
   if (billingCycle <= 0)
     return price
 
-  const fraction = Math.min(days / billingCycle, 1)
+  const fraction = days / billingCycle
   return price * fraction
 }
 

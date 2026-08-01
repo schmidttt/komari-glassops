@@ -20,6 +20,11 @@ export interface RegionCluster {
   org?: string
   servers: number
   onlineServers: number
+  nodes: Array<{
+    uuid: string
+    name: string
+    online: boolean
+  }>
 }
 
 interface ClusterSummary {
@@ -129,7 +134,17 @@ export function useNodeGeoClusters(options: UseNodeGeoClustersOptions = {}) {
 
       let cluster = clustersById.get(info.id)
       if (!cluster) {
-        cluster = { id: info.id, code: info.code, coord: info.coord, label: info.label, asn: info.asn, org: info.org, servers: 0, onlineServers: 0 }
+        cluster = {
+          id: info.id,
+          code: info.code,
+          coord: info.coord,
+          label: info.label,
+          asn: info.asn,
+          org: info.org,
+          servers: 0,
+          onlineServers: 0,
+          nodes: [],
+        }
         clustersById.set(info.id, cluster)
       }
       if (!cluster.asn && info.asn)
@@ -137,6 +152,11 @@ export function useNodeGeoClusters(options: UseNodeGeoClustersOptions = {}) {
       if (!cluster.org && info.org)
         cluster.org = info.org
       cluster.servers += 1
+      cluster.nodes.push({
+        uuid: node.uuid,
+        name: node.name,
+        online: node.online,
+      })
 
       if (node.online)
         cluster.onlineServers += 1
@@ -155,7 +175,10 @@ export function useNodeGeoClusters(options: UseNodeGeoClustersOptions = {}) {
   const offlineServers = computed(() => totalServers.value - onlineServers.value)
 
   function clusterKey(cluster: RegionCluster) {
-    return `${cluster.id}:${cluster.coord[0]},${cluster.coord[1]}:${cluster.label}:${cluster.asn ?? ''}:${cluster.org ?? ''}:${cluster.servers}:${cluster.onlineServers}`
+    const nodeSignature = cluster.nodes
+      .map(node => `${node.uuid}:${node.name}:${node.online ? 1 : 0}`)
+      .join('|')
+    return `${cluster.id}:${cluster.coord[0]},${cluster.coord[1]}:${cluster.label}:${cluster.asn ?? ''}:${cluster.org ?? ''}:${cluster.servers}:${cluster.onlineServers}:${nodeSignature}`
   }
 
   const nodeIpSignature = computed(() => displayNodes.value

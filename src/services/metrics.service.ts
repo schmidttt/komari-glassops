@@ -47,7 +47,39 @@ function normalizeMetricKeys(params: MetricQueryParams): string[] {
   return [...new Set(keys.filter(Boolean))].sort()
 }
 
+function normalizeMetricQueryParams(params: MetricQueryParams): MetricQueryParams {
+  const normalizedParams: MetricQueryParams = {
+    ...params,
+    hours: normalizeHours(params.hours),
+    max_points: normalizeMaxPoints(params.max_points ?? params.downsample_points),
+  }
+  delete normalizedParams.downsample
+  delete normalizedParams.server_downsample
+  delete normalizedParams.downsample_by_metric
+  delete normalizedParams.server_downsample_by_metric
+  delete normalizedParams.downsample_points
+  delete normalizedParams.downsample_algorithm
+  delete normalizedParams.downsample_algorithm_by_metric
+  return normalizedParams
+}
+
+function normalizePingMetricStatsParams(params: PingMetricStatsParams): PingMetricStatsParams {
+  const normalizedParams: PingMetricStatsParams = {
+    ...params,
+    hours: normalizeHours(params.hours),
+    max_points: normalizeMaxPoints(params.max_points ?? params.downsample_points),
+  }
+  delete normalizedParams.downsample_points
+  return normalizedParams
+}
+
 const metricDefinitionsCache = new SharedCache<MetricDefinition[]>({
+  maxSize: 1,
+  ttl: CACHE_CONFIG.request.ttl,
+  cleanupInterval: CACHE_CONFIG.cleanup.interval,
+})
+
+const publicPingTasksCache = new SharedCache<PingTaskInfo[]>({
   maxSize: 1,
   ttl: CACHE_CONFIG.request.ttl,
   cleanupInterval: CACHE_CONFIG.cleanup.interval,
@@ -92,12 +124,16 @@ export function getPublicPingTasksRequestKey(): string {
   return 'metrics:public-ping-tasks'
 }
 
+export function invalidatePublicPingTasks(): void {
+  publicPingTasksCache.delete(getPublicPingTasksRequestKey())
+}
+
 export function abortQueryMetrics(params: MetricQueryParams): void {
-  requestManager.abort(getQueryMetricsRequestKey(params))
+  requestManager.abort(getQueryMetricsRequestKey(normalizeMetricQueryParams(params)))
 }
 
 export function abortPingMetricStats(params: PingMetricStatsParams): void {
-  requestManager.abort(getPingMetricStatsRequestKey(params))
+  requestManager.abort(getPingMetricStatsRequestKey(normalizePingMetricStatsParams(params)))
 }
 
 export async function loadMetricDefinitions(): Promise<MetricDefinition[]> {
@@ -115,11 +151,7 @@ export async function loadMetricDefinitions(): Promise<MetricDefinition[]> {
 }
 
 export async function queryMetrics(params: MetricQueryParams): Promise<MetricQueryResponse> {
-  const normalizedParams: MetricQueryParams = {
-    ...params,
-    hours: normalizeHours(params.hours),
-    max_points: normalizeMaxPoints(params.max_points ?? params.downsample_points),
-  }
+  const normalizedParams = normalizeMetricQueryParams(params)
 
   return requestManager.run(
     getQueryMetricsRequestKey(normalizedParams),
@@ -129,11 +161,7 @@ export async function queryMetrics(params: MetricQueryParams): Promise<MetricQue
 }
 
 export async function loadPingMetricStats(params: PingMetricStatsParams): Promise<PingMetricStatsResponse> {
-  const normalizedParams: PingMetricStatsParams = {
-    ...params,
-    hours: normalizeHours(params.hours),
-    max_points: normalizeMaxPoints(params.max_points ?? params.downsample_points),
-  }
+  const normalizedParams = normalizePingMetricStatsParams(params)
 
   return requestManager.run(
     getPingMetricStatsRequestKey(normalizedParams),
@@ -143,9 +171,15 @@ export async function loadPingMetricStats(params: PingMetricStatsParams): Promis
 }
 
 export async function loadPublicPingTasks(): Promise<PingTaskInfo[]> {
-  return requestManager.run(
-    getPublicPingTasksRequestKey(),
+  const key = getPublicPingTasksRequestKey()
+  const cached = publicPingTasksCache.get(key)
+  if (cached)
+    return cached
+
+  const tasks = await requestManager.run(
+    key,
     async () => getSharedRpc().getPublicPingTasks(),
     { shouldRetry: shouldRetryMetricRequest },
   )
+  return publicPingTasksCache.set(key, tasks)
 }

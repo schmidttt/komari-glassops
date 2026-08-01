@@ -37,11 +37,14 @@ interface NodeMetadataItem {
   style?: CSSProperties
 }
 
-const props = defineProps<{
+const props = withDefaults(defineProps<{
   nodes: NodeData[]
   transitionKey?: string
   sortResetKey?: string
-}>()
+  pingEnabled?: boolean
+}>(), {
+  pingEnabled: true,
+})
 
 const emit = defineEmits<{
   click: [node: NodeData]
@@ -52,6 +55,10 @@ const rowStaggerMs = UI_CONFIG.motion.staggerMs
 const rowStaggerLimit = UI_CONFIG.motion.staggerLimit
 
 const appStore = useAppStore()
+
+function toggleFavorite(node: NodeData): void {
+  appStore.toggleFavoriteNode(node.uuid)
+}
 
 // 未登录且开启「未登录隐藏价格」时，隐藏价格信息
 const showPrice = computed(() => appStore.privateFeaturesAllowed || !appStore.hidePriceWhenLoggedOut)
@@ -433,6 +440,17 @@ function buildNodeMetadataItems(node: NodeData): NodeMetadataItem[] {
                       :alt="getRegionAltText(node.region)" class="size-5 rounded-sm shrink-0"
                     >
                     <span class="truncate">{{ node.name }}</span>
+                    <button
+                      type="button"
+                      class="inline-flex size-5 shrink-0 items-center justify-center rounded-sm text-muted-foreground transition-colors hover:bg-slate-500/10 hover:text-amber-500"
+                      :class="appStore.isFavoriteNode(node.uuid) && 'text-amber-500'"
+                      :aria-label="appStore.isFavoriteNode(node.uuid) ? `取消收藏 ${node.name}` : `收藏 ${node.name}`"
+                      :title="appStore.isFavoriteNode(node.uuid) ? '取消收藏' : '收藏节点'"
+                      @click.stop="toggleFavorite(node)"
+                      @keydown.stop
+                    >
+                      <Icon :icon="appStore.isFavoriteNode(node.uuid) ? 'tabler:star-filled' : 'tabler:star'" width="13" height="13" />
+                    </button>
                     <DataTooltip
                       v-if="getNodeMessage(node)"
                       :content="getNodeMessageTooltip(node)"
@@ -457,18 +475,27 @@ function buildNodeMetadataItems(node: NodeData): NodeMetadataItem[] {
                 <!-- 信息 / 标签 -->
                 <div v-else-if="col.key === 'metadata'" class="min-w-0 overflow-hidden">
                   <div v-if="getNodeMetadataItems(node).length > 0" class="flex flex-wrap gap-1 items-center max-h-11 overflow-hidden">
-                    <Badge
-                      v-for="item in getNodeMetadataItems(node)" :key="item.key"
-                      :variant="item.variant ?? 'secondary'"
-                      :title="item.title ?? item.value"
-                      :style="item.style"
-                      class="min-w-0 overflow-hidden whitespace-nowrap rounded-md px-1.5 text-[11px] font-medium shadow-none"
-                      :class="item.class"
+                    <DataTooltip
+                      v-for="item in getNodeMetadataItems(node)"
+                      :key="item.key"
+                      :content="item.title ?? item.value"
+                      placement="top"
+                      as="span"
+                      class="inline-flex min-w-0"
+                      content-class="max-w-[18rem] whitespace-pre-line leading-snug text-left"
                     >
-                      <img v-if="item.flagSrc" :src="item.flagSrc" :alt="item.value" class="size-3.5 rounded-[2px] shrink-0">
-                      <Icon v-else-if="item.icon" :icon="item.icon" width="12" height="12" class="shrink-0" />
-                      <span class="truncate">{{ item.value }}</span>
-                    </Badge>
+                      <Badge
+                        data-node-metadata-chip
+                        :variant="item.variant ?? 'secondary'"
+                        :style="item.style"
+                        class="min-w-0 overflow-hidden whitespace-nowrap rounded-md px-1.5 text-[11px] font-medium shadow-none"
+                        :class="item.class"
+                      >
+                        <img v-if="item.flagSrc" :src="item.flagSrc" :alt="item.value" class="size-3.5 rounded-[2px] shrink-0">
+                        <Icon v-else-if="item.icon" :icon="item.icon" width="12" height="12" class="shrink-0" />
+                        <span class="truncate">{{ item.value }}</span>
+                      </Badge>
+                    </DataTooltip>
                   </div>
                 </div>
 
@@ -482,7 +509,12 @@ function buildNodeMetadataItems(node: NodeData): NodeMetadataItem[] {
                   <span class="text-[11px] font-medium text-foreground/70 truncate">
                     {{ formatUptime(node.uptime ?? 0) }}
                   </span>
-                  <NodePingListCell :uuid="node.uuid" :online="node.online" @click="emit('pingClick', node)" />
+                  <NodePingListCell
+                    :uuid="node.uuid"
+                    :online="node.online"
+                    :enabled="props.pingEnabled"
+                    @click="emit('pingClick', node)"
+                  />
                 </div>
 
                 <!-- 操作系统 -->

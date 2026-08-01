@@ -1,0 +1,458 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Komari GlassOps Theme Preview</title>
+    <style>
+      * {
+        box-sizing: border-box;
+      }
+
+      html,
+      body {
+        width: 1600px;
+        height: 900px;
+        margin: 0;
+        overflow: hidden;
+        color: #f8fafc;
+        font-family:
+          Inter,
+          ui-sans-serif,
+          system-ui,
+          -apple-system,
+          BlinkMacSystemFont,
+          'SF Pro Display',
+          'PingFang SC',
+          'Microsoft YaHei',
+          sans-serif;
+      }
+
+      body {
+        position: relative;
+        background: #06111d;
+      }
+
+      .atmosphere {
+        position: absolute;
+        inset: 0;
+        background:
+          linear-gradient(90deg, rgb(2 9 18 / 0.18), rgb(2 9 18 / 0.02) 58%, rgb(2 9 18 / 0.12)),
+          url('./preview-background-v2.png') center / cover no-repeat;
+        filter: saturate(0.96) brightness(0.9);
+      }
+
+      .atmosphere::before {
+        position: absolute;
+        inset: -10px;
+        background: url('./preview-dashboard.png') center / cover no-repeat;
+        content: '';
+        filter: blur(7px) brightness(0.46) saturate(0.85);
+        opacity: 0.34;
+        transform: scale(1.025);
+      }
+
+      .atmosphere::after {
+        position: absolute;
+        inset: 0;
+        background:
+          radial-gradient(circle at 76% 40%, rgb(56 189 248 / 0.15), transparent 37%),
+          linear-gradient(
+            90deg,
+            rgb(2 8 18 / 0.76) 0%,
+            rgb(2 8 18 / 0.52) 38%,
+            rgb(2 8 18 / 0.16) 63%,
+            rgb(2 8 18 / 0.3)
+          ),
+          linear-gradient(180deg, rgb(2 8 18 / 0.12), transparent 48%, rgb(2 8 18 / 0.28));
+        content: '';
+      }
+
+      .hero {
+        position: absolute;
+        z-index: 2;
+        top: 44px;
+        bottom: 44px;
+        left: 44px;
+        width: 590px;
+        overflow: hidden;
+        border: 1px solid rgb(186 230 253 / 0.2);
+        border-radius: 32px;
+        background: linear-gradient(145deg, rgb(255 255 255 / 0.06), transparent 36%), rgb(3 11 22 / 0.77);
+        box-shadow:
+          inset 0 1px 0 rgb(255 255 255 / 0.1),
+          0 38px 110px rgb(0 0 0 / 0.5);
+        backdrop-filter: blur(20px) saturate(1.12);
+      }
+
+      .hero::before {
+        position: absolute;
+        top: -150px;
+        right: -170px;
+        width: 430px;
+        height: 430px;
+        border-radius: 999px;
+        background: radial-gradient(circle, rgb(56 189 248 / 0.16), transparent 68%);
+        content: '';
+      }
+
+      .hero main {
+        position: relative;
+        z-index: 1;
+        display: flex;
+        height: 100%;
+        flex-direction: column;
+        justify-content: center;
+        padding: 38px 38px;
+      }
+
+      .eyebrow {
+        display: inline-flex;
+        width: max-content;
+        align-items: center;
+        gap: 9px;
+        border: 1px solid rgb(125 211 252 / 0.2);
+        border-radius: 999px;
+        background: rgb(8 24 40 / 0.64);
+        padding: 7px 13px;
+        color: #bae6fd;
+        font-size: 13px;
+        font-weight: 760;
+        letter-spacing: 0.13em;
+      }
+
+      .eyebrow::before {
+        width: 8px;
+        height: 8px;
+        border-radius: 999px;
+        background: #34d399;
+        box-shadow: 0 0 16px rgb(52 211 153 / 0.72);
+        content: '';
+      }
+
+      h1 {
+        margin: 20px 0 7px;
+        font-size: 51px;
+        font-weight: 790;
+        letter-spacing: -0.055em;
+        line-height: 1;
+      }
+
+      h1 span {
+        color: #7dd3fc;
+      }
+
+      .subtitle {
+        margin: 0;
+        color: #dbeafe;
+        font-size: 22px;
+        font-weight: 680;
+        line-height: 1.35;
+      }
+
+      .summary {
+        margin: 13px 0 18px;
+        color: #aebfd0;
+        font-size: 14px;
+        font-weight: 500;
+        line-height: 1.55;
+      }
+
+      .features {
+        display: grid;
+        gap: 8px;
+      }
+
+      .feature {
+        display: grid;
+        min-height: 66px;
+        grid-template-columns: 38px 1fr;
+        align-items: center;
+        gap: 11px;
+        border: 1px solid rgb(186 230 253 / 0.14);
+        border-radius: 14px;
+        background: linear-gradient(135deg, rgb(255 255 255 / 0.045), transparent 46%), rgb(9 25 42 / 0.72);
+        box-shadow:
+          inset 0 1px 0 rgb(255 255 255 / 0.06),
+          0 12px 30px rgb(0 0 0 / 0.12);
+        padding: 9px 13px;
+      }
+
+      .feature-index {
+        display: grid;
+        width: 34px;
+        height: 34px;
+        place-items: center;
+        border: 1px solid rgb(125 211 252 / 0.22);
+        border-radius: 10px;
+        background: linear-gradient(145deg, rgb(56 189 248 / 0.22), rgb(52 211 153 / 0.16));
+        color: #b9eaff;
+        font-size: 11px;
+        font-weight: 800;
+        letter-spacing: 0.04em;
+      }
+
+      .feature-title {
+        color: #f1f7ff;
+        font-size: 16px;
+        font-weight: 735;
+        line-height: 1.2;
+      }
+
+      .feature-detail {
+        margin-top: 3px;
+        color: #8fa5ba;
+        font-size: 11px;
+        font-weight: 560;
+        line-height: 1.35;
+      }
+
+      footer {
+        display: flex;
+        align-items: center;
+        gap: 11px;
+        margin-top: 16px;
+        color: #7f94aa;
+        font-size: 12px;
+        font-weight: 620;
+        letter-spacing: 0.03em;
+      }
+
+      footer::before {
+        width: 32px;
+        height: 1px;
+        background: rgb(125 211 252 / 0.36);
+        content: '';
+      }
+
+      .showcase {
+        position: absolute;
+        z-index: 2;
+        top: 44px;
+        right: 42px;
+        bottom: 44px;
+        left: 662px;
+        display: grid;
+        grid-template-rows: 252px 192px 1fr;
+        gap: 14px;
+      }
+
+      .glass-window {
+        position: relative;
+        overflow: hidden;
+        border: 1px solid rgb(125 211 252 / 0.25);
+        border-radius: 24px;
+        background: rgb(3 12 23 / 0.7);
+        box-shadow:
+          inset 0 1px 0 rgb(255 255 255 / 0.1),
+          0 18px 48px rgb(0 0 0 / 0.35),
+          0 0 36px rgb(56 189 248 / 0.08);
+        backdrop-filter: blur(16px) saturate(1.08);
+      }
+
+      .glass-window::after {
+        position: absolute;
+        inset: 0;
+        border-radius: inherit;
+        background:
+          linear-gradient(180deg, transparent 58%, rgb(2 8 18 / 0.76)),
+          linear-gradient(135deg, rgb(125 211 252 / 0.08), transparent 42%);
+        content: '';
+        pointer-events: none;
+      }
+
+      .window-label {
+        position: absolute;
+        z-index: 3;
+        top: 13px;
+        left: 13px;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        border: 1px solid rgb(125 211 252 / 0.22);
+        border-radius: 999px;
+        background: rgb(3 14 27 / 0.82);
+        box-shadow:
+          inset 0 1px 0 rgb(255 255 255 / 0.08),
+          0 10px 28px rgb(0 0 0 / 0.28);
+        padding: 7px 12px;
+        color: #d9f2ff;
+        font-size: 12px;
+        font-weight: 730;
+        letter-spacing: 0.02em;
+        backdrop-filter: blur(12px);
+      }
+
+      .window-label::before {
+        width: 7px;
+        height: 7px;
+        border-radius: 999px;
+        background: #38bdf8;
+        box-shadow: 0 0 12px rgb(56 189 248 / 0.7);
+        content: '';
+      }
+
+      .wide-shot {
+        background:
+          linear-gradient(90deg, rgb(2 8 18 / 0.08), transparent 65%),
+          url('./preview-dashboard.png') center 20% / 100% auto no-repeat;
+      }
+
+      .wide-shot .wide-accent {
+        position: absolute;
+        z-index: 2;
+        right: 16px;
+        bottom: 16px;
+        display: flex;
+        gap: 8px;
+      }
+
+      .wide-shot .wide-accent span {
+        border: 1px solid rgb(125 211 252 / 0.18);
+        border-radius: 999px;
+        background: rgb(3 14 27 / 0.76);
+        padding: 6px 10px;
+        color: #9eddfa;
+        font-size: 11px;
+        font-weight: 700;
+        backdrop-filter: blur(10px);
+      }
+
+      .earth-row {
+        display: grid;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        gap: 12px;
+      }
+
+      .earth-shot {
+        position: relative;
+        overflow: hidden;
+        border: 1px solid rgb(125 211 252 / 0.2);
+        border-radius: 20px;
+        background-color: rgb(3 12 23 / 0.72);
+        box-shadow:
+          inset 0 1px 0 rgb(255 255 255 / 0.08),
+          0 14px 36px rgb(0 0 0 / 0.28);
+      }
+
+      .earth-shot::before {
+        position: absolute;
+        inset: 0;
+        background: linear-gradient(180deg, transparent 52%, rgb(2 8 18 / 0.82));
+        content: '';
+      }
+
+      .earth-shot span {
+        position: absolute;
+        z-index: 2;
+        right: 12px;
+        bottom: 10px;
+        color: #dff5ff;
+        font-size: 11px;
+        font-weight: 800;
+        letter-spacing: 0.12em;
+        text-shadow: 0 2px 10px rgb(0 0 0 / 0.7);
+      }
+
+      .earth-realistic {
+        background: url('./preview-earth-realistic.png') 69% 18% / 142% auto no-repeat;
+      }
+
+      .earth-cobe {
+        background: url('./preview-earth-cobe.png') 62% 18% / 142% auto no-repeat;
+      }
+
+      .earth-tiled {
+        background: url('./preview-earth-tiled.png') 100% 0 / 220% auto no-repeat;
+      }
+
+      .bottom-row {
+        display: grid;
+        min-height: 0;
+        grid-template-columns: 1fr 1fr;
+        gap: 14px;
+      }
+
+      .card-shot {
+        background: url('./preview-configurable-cards.png') 50% 91% / 126% auto no-repeat;
+      }
+
+      .detail-shot {
+        background: url('./preview-detail.png') 50% 23% / 118% auto no-repeat;
+      }
+
+      .bottom-row .glass-window::after {
+        background:
+          linear-gradient(180deg, rgb(2 8 18 / 0.05), transparent 40%, rgb(2 8 18 / 0.56)),
+          linear-gradient(135deg, rgb(56 189 248 / 0.06), transparent 42%);
+      }
+    </style>
+  </head>
+  <body>
+    <div class="atmosphere"></div>
+
+    <section class="hero">
+      <main>
+        <div class="eyebrow">KOMARI THEME · v1.0.3</div>
+        <h1>Komari <span>GlassOps</span></h1>
+        <p class="subtitle">基于社区开源主题继续开发</p>
+        <p class="summary">
+          以 Glassmorphism 等社区项目为基础，结合日常节点运维需求，对布局、监控信息与交互体验进行整理和优化。
+        </p>
+        <div class="features">
+          <div class="feature">
+            <span class="feature-index">01</span>
+            <div>
+              <div class="feature-title">主题自适应宽屏显示器</div>
+              <div class="feature-detail">充分利用横向空间，卡片与地球按屏幕尺寸平衡缩放</div>
+            </div>
+          </div>
+          <div class="feature">
+            <span class="feature-index">02</span>
+            <div>
+              <div class="feature-title">首页卡片自定义监控</div>
+              <div class="feature-detail">总览卡、节点卡与 TCPing 任务按使用场景组合</div>
+            </div>
+          </div>
+          <div class="feature">
+            <span class="feature-index">03</span>
+            <div>
+              <div class="feature-title">三种地球样式优化</div>
+              <div class="feature-detail">realistic、cobe 与 tiled 兼顾观感、标记和明暗主题</div>
+            </div>
+          </div>
+          <div class="feature">
+            <span class="feature-index">04</span>
+            <div>
+              <div class="feature-title">服务器详情页重构</div>
+              <div class="feature-detail">重整硬件、网络与历史图表层级，提升信息读取效率</div>
+            </div>
+          </div>
+        </div>
+        <footer>Community-based · MIT License</footer>
+      </main>
+    </section>
+
+    <section class="showcase" aria-label="GlassOps 主题特色界面">
+      <div class="glass-window wide-shot">
+        <div class="window-label">宽屏布局 · 总览与节点监控同屏</div>
+        <div class="wide-accent"><span>自适应网格</span><span>信息密度可控</span></div>
+      </div>
+
+      <div class="earth-row" aria-label="三种地球样式">
+        <div class="earth-shot earth-realistic"><span>REALISTIC</span></div>
+        <div class="earth-shot earth-cobe"><span>COBE</span></div>
+        <div class="earth-shot earth-tiled"><span>TILED</span></div>
+      </div>
+
+      <div class="bottom-row">
+        <div class="glass-window card-shot">
+          <div class="window-label">首页卡片自定义监控</div>
+        </div>
+        <div class="glass-window detail-shot">
+          <div class="window-label">服务器详情页重构</div>
+        </div>
+      </div>
+    </section>
+  </body>
+</html>

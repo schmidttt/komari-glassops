@@ -37,9 +37,14 @@ coverage
 # Vitest
 __screenshots__/
 
+# Playwright
+playwright-report/
+test-results/
+
 # Vite
 *.timestamp-*-*.mjs
 
 # Theme build output
 komari-theme-*.zip
-bun.lock
+komari-glassops-build-*.zip
+komari-glassops-v*-build-*.zip

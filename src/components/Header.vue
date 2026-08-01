@@ -17,21 +17,29 @@ const isScrolled = inject<ReturnType<typeof ref<boolean>>>('isScrolled', ref(fal
 
 const siteFavicon = ref('/favicon.ico')
 
+const themeButton = computed(() => {
+  if (appStore.themeMode === 'auto') {
+    return {
+      title: `自动主题（当前${appStore.isDark ? '深色' : '浅色'}）`,
+      icon: 'tabler:brightness-auto',
+      pressed: true,
+    }
+  }
+  if (appStore.themeMode === 'light') {
+    return {
+      title: '浅色主题',
+      icon: 'icon-park-outline:sun-one',
+      pressed: false,
+    }
+  }
+  return {
+    title: '深色主题',
+    icon: 'icon-park-outline:moon',
+    pressed: false,
+  }
+})
+
 const actionButtons = computed(() => {
-  const themeTitleMap = {
-    auto: appStore.managedThemeMode === 'beijing'
-      ? appStore.isBeijingDaytime ? '自动主题：北京时间日间' : '自动主题：北京时间夜间'
-      : appStore.managedThemeMode === 'light' ? '自动主题：后台浅色' : '自动主题：后台深色',
-    light: '浅色主题',
-    dark: '深色主题',
-  } as const
-
-  const themeIconMap = {
-    auto: appStore.isDark ? 'icon-park-outline:moon' : 'icon-park-outline:sun-one',
-    light: 'icon-park-outline:sun-one',
-    dark: 'icon-park-outline:moon',
-  } as const
-
   const buttons: Array<{ title: string, icon: string, action: string, pressed?: boolean }> = []
 
   if (router.currentRoute.value.name === 'home' && appStore.privateFeaturesAllowed && appStore.homeToolsEnabled) {
@@ -43,10 +51,20 @@ const actionButtons = computed(() => {
     })
   }
 
+  if (router.currentRoute.value.name === 'home' && appStore.privateFeaturesAllowed) {
+    buttons.push({
+      title: '首页延迟监控',
+      icon: 'tabler:clock-cog',
+      action: 'openHomePingSettings',
+      pressed: appStore.homePingSettingsVisible,
+    })
+  }
+
   buttons.push({
-    title: `${themeTitleMap[appStore.themeMode]}（点击切换）`,
-    icon: themeIconMap[appStore.themeMode],
+    title: themeButton.value.title,
+    icon: themeButton.value.icon,
     action: 'toggleTheme',
+    pressed: themeButton.value.pressed,
   })
 
   if (!appStore.loading && (appStore.privateFeaturesAllowed || !appStore.hideAdminEntryWhenLoggedOut)) {
@@ -73,13 +91,22 @@ function handleButtonClick(action: string) {
     case 'toggleHomeTools':
       appStore.homeAdvancedToolsVisible = !appStore.homeAdvancedToolsVisible
       break
+    case 'openHomePingSettings':
+      appStore.homePingSettingsVisible = true
+      break
     case 'jumpToSetting':
       void recordVisitorEvent({
         event: 'admin_entry_click',
         path: router.currentRoute.value.path,
         route: String(router.currentRoute.value.name ?? ''),
       })
-      location.href = '/admin'
+      try {
+        sessionStorage.setItem('komariOfficialAppRoute', '/admin')
+        location.href = '/admin-app/index.html'
+      }
+      catch {
+        location.href = '/admin-app/index.html?__komari_route=%2Fadmin'
+      }
       break
   }
 }
@@ -95,7 +122,7 @@ const sitename = computed(() => appStore.publicSettings?.sitename || 'Komari Mon
     class="transition-all duration-200 top-0 sticky z-10 border-b border-transparent"
     :class="isScrolled ? '!border-slate-500/10 backdrop-blur-lg' : 'bg-transparent'"
   >
-    <div class="px-4 flex-between h-14 max-w-[1280px] mx-auto">
+    <div class="mx-auto h-14 w-full max-w-[2200px] px-4 flex-between">
       <div class="flex items-center gap-3 cursor-pointer" @click="router.push('/')">
         <Avatar class="size-8">
           <AvatarImage :src="siteFavicon" :alt="sitename" />

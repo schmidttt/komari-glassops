@@ -10,6 +10,7 @@ export type PermissionKey
     | 'providerValue'
     | 'nodeTopology'
     | 'auditLog'
+    | 'themeConfiguration'
     | 'diskPrediction'
     | 'providerGeoLookup'
 

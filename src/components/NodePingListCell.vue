@@ -1,9 +1,11 @@
 <script setup lang="ts">
+import PingHistoryStrip from '@/components/PingHistoryStrip.vue'
 import { useNodePingDisplay } from '@/composables/useNodePingDisplay'
 
 const props = defineProps<{
   uuid: string
   online: boolean
+  enabled?: boolean
 }>()
 
 const emit = defineEmits<{
@@ -13,7 +15,12 @@ const emit = defineEmits<{
 const {
   latencyRenderBars,
   lossRenderBars,
-} = useNodePingDisplay(() => props.uuid)
+} = useNodePingDisplay(
+  () => props.uuid,
+  {
+    enabled: () => props.enabled !== false,
+  },
+)
 </script>
 
 <template>
@@ -24,36 +31,18 @@ const {
     @click.stop="emit('click')"
   >
     <div class="group/panel relative items-center gap-1 opacity-80 hover:opacity-100">
-      <div
-        class="grid h-1 cursor-auto items-end gap-[1px] transition-all hover:h-2.5"
-        :style="{ gridTemplateColumns: `repeat(${latencyRenderBars.length}, minmax(0, 1fr))` }"
-      >
-        <span
-          v-for="bar in latencyRenderBars"
-          :key="bar.key"
-          :title="bar.tooltip"
-          :aria-label="bar.tooltip"
-          class="h-full w-full"
-        >
-          <span class="block h-full w-full rounded-[1px] transition-all group-hover:opacity-50 hover:scale-y-160 hover:opacity-100" :class="bar.className" />
-        </span>
-      </div>
+      <PingHistoryStrip
+        :bars="latencyRenderBars"
+        label="延迟历史，鼠标悬浮查看具体时间与延迟"
+        class="h-1.5 cursor-auto items-end"
+      />
     </div>
     <div class="group/panel relative items-center gap-1 opacity-80 hover:opacity-100">
-      <div
-        class="grid h-1 cursor-auto items-end gap-[1px] transition-all hover:h-2.5"
-        :style="{ gridTemplateColumns: `repeat(${lossRenderBars.length}, minmax(0, 1fr))` }"
-      >
-        <span
-          v-for="bar in lossRenderBars"
-          :key="bar.key"
-          :title="bar.tooltip"
-          :aria-label="bar.tooltip"
-          class="h-full w-full"
-        >
-          <span class="block h-full w-full rounded-[1px] transition-all group-hover:opacity-50 hover:scale-y-160 hover:opacity-100" :class="bar.className" />
-        </span>
-      </div>
+      <PingHistoryStrip
+        :bars="lossRenderBars"
+        label="丢包历史，鼠标悬浮查看具体时间与丢包率"
+        class="h-1.5 cursor-auto items-end"
+      />
     </div>
   </button>
 </template>

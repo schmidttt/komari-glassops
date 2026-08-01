@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import type { HTMLAttributes } from 'vue'
-import { computed } from 'vue'
+import { computed, nextTick, onBeforeUnmount, ref, useAttrs, useSlots } from 'vue'
 import { cn } from '@/lib/utils'
 
 type DataTooltipPlacement = 'top' | 'bottom' | 'left' | 'right'
@@ -20,19 +20,21 @@ interface Props {
   class?: HTMLAttributes['class']
   /** 气泡的附加类 */
   contentClass?: HTMLAttributes['class']
+  /** 使用最近的祖先元素作为定位参照，例如节点卡片 */
+  referenceSelector?: string
+  /** 将气泡最大宽度限制在定位参照元素以内 */
+  constrainToReference?: boolean
 }
 
+defineOptions({
+  inheritAttrs: false,
+})
 const props = withDefaults(defineProps<Props>(), {
   placement: 'top',
   as: 'div',
 })
-
-const placementClass: Record<DataTooltipPlacement, string> = {
-  top: 'bottom-full left-1/2 mb-2 -translate-x-1/2',
-  bottom: 'top-full left-1/2 mt-2 -translate-x-1/2',
-  left: 'top-1/2 right-full mr-2 -translate-y-1/2',
-  right: 'top-1/2 left-full ml-2 -translate-y-1/2',
-}
+const slots = useSlots()
+const attrs = useAttrs()
 
 const sizeStyle = computed(() => {
   const style: Record<string, string> = {}
@@ -42,26 +44,199 @@ const sizeStyle = computed(() => {
     style.height = typeof props.height === 'number' ? `${props.height}px` : props.height
   return style
 })
+
+const root = ref<HTMLElement | null>(null)
+const tooltip = ref<HTMLElement | null>(null)
+const open = ref(false)
+const tooltipX = ref(0)
+const tooltipY = ref(0)
+const referenceMaxWidth = ref<number | null>(null)
+const effectivePlacement = ref<DataTooltipPlacement>(props.placement)
+let positionFrame = 0
+let resizeObserver: ResizeObserver | null = null
+
+const hasTooltip = computed(() => Boolean(props.content || slots.content))
+const tooltipTransform = computed(() => {
+  if (effectivePlacement.value === 'bottom')
+    return 'translate(-50%, 0)'
+  if (effectivePlacement.value === 'left')
+    return 'translate(-100%, -50%)'
+  if (effectivePlacement.value === 'right')
+    return 'translate(0, -50%)'
+  return 'translate(-50%, -100%)'
+})
+
+const tooltipStyle = computed(() => ({
+  ...sizeStyle.value,
+  left: `${tooltipX.value}px`,
+  top: `${tooltipY.value}px`,
+  transform: tooltipTransform.value,
+  ...(referenceMaxWidth.value != null ? { maxWidth: `${referenceMaxWidth.value}px` } : {}),
+}))
+
+function getReferenceElement(): HTMLElement | null {
+  if (!root.value)
+    return null
+  if (!props.referenceSelector)
+    return root.value
+  return root.value.closest<HTMLElement>(props.referenceSelector) ?? root.value
+}
+
+function updateReferenceConstraint() {
+  if (!props.constrainToReference) {
+    referenceMaxWidth.value = null
+    return
+  }
+
+  const referenceRect = getReferenceElement()?.getBoundingClientRect()
+  if (!referenceRect)
+    return
+  const edgeGap = 10
+  referenceMaxWidth.value = Math.max(0, Math.min(referenceRect.width, window.innerWidth - edgeGap * 2))
+}
+
+function updatePosition() {
+  cancelAnimationFrame(positionFrame)
+  positionFrame = requestAnimationFrame(() => {
+    const triggerRect = root.value?.getBoundingClientRect()
+    const referenceRect = getReferenceElement()?.getBoundingClientRect()
+    if (!triggerRect || !referenceRect)
+      return
+
+    const tooltipRect = tooltip.value?.getBoundingClientRect()
+    const tooltipWidth = tooltipRect?.width || 180
+    const tooltipHeight = tooltipRect?.height || 36
+    const edgeGap = 10
+    const anchorGap = 8
+    let placement = props.placement
+    const topSpace = referenceRect.top - edgeGap - anchorGap
+    const bottomSpace = window.innerHeight - referenceRect.bottom - edgeGap - anchorGap
+    if (placement === 'top' && tooltipHeight > topSpace && bottomSpace > topSpace)
+      placement = 'bottom'
+    else if (placement === 'bottom' && tooltipHeight > bottomSpace && topSpace > bottomSpace)
+      placement = 'top'
+    effectivePlacement.value = placement
+
+    let x = props.referenceSelector
+      ? referenceRect.left + referenceRect.width / 2
+      : triggerRect.left + triggerRect.width / 2
+    let y = referenceRect.top - anchorGap
+
+    if (placement === 'bottom') {
+      y = referenceRect.bottom + anchorGap
+    }
+    else if (placement === 'left') {
+      x = triggerRect.left - anchorGap
+      y = triggerRect.top + triggerRect.height / 2
+    }
+    else if (placement === 'right') {
+      x = triggerRect.right + anchorGap
+      y = triggerRect.top + triggerRect.height / 2
+    }
+
+    if (placement === 'left') {
+      x = Math.max(edgeGap + tooltipWidth, x)
+    }
+    else if (placement === 'right') {
+      x = Math.min(window.innerWidth - edgeGap - tooltipWidth, x)
+    }
+    else {
+      x = Math.max(edgeGap + tooltipWidth / 2, Math.min(window.innerWidth - edgeGap - tooltipWidth / 2, x))
+    }
+
+    if (placement === 'top') {
+      y = Math.max(edgeGap + tooltipHeight, y)
+    }
+    else if (placement === 'bottom') {
+      y = Math.min(window.innerHeight - edgeGap - tooltipHeight, y)
+    }
+    else {
+      y = Math.max(edgeGap + tooltipHeight / 2, Math.min(window.innerHeight - edgeGap - tooltipHeight / 2, y))
+    }
+
+    tooltipX.value = x
+    tooltipY.value = y
+  })
+}
+
+function handleViewportChange() {
+  updateReferenceConstraint()
+  updatePosition()
+}
+
+function startPositionTracking() {
+  stopPositionTracking()
+  window.addEventListener('resize', handleViewportChange, { passive: true })
+  document.addEventListener('scroll', handleViewportChange, { capture: true, passive: true })
+  resizeObserver = new ResizeObserver(handleViewportChange)
+  const reference = getReferenceElement()
+  if (reference)
+    resizeObserver.observe(reference)
+  if (tooltip.value)
+    resizeObserver.observe(tooltip.value)
+}
+
+function stopPositionTracking() {
+  window.removeEventListener('resize', handleViewportChange)
+  document.removeEventListener('scroll', handleViewportChange, true)
+  resizeObserver?.disconnect()
+  resizeObserver = null
+}
+
+function showTooltip(event: PointerEvent | MouseEvent | FocusEvent) {
+  if (!hasTooltip.value)
+    return
+  if ('pointerType' in event && event.pointerType === 'touch')
+    return
+  updateReferenceConstraint()
+  effectivePlacement.value = props.placement
+  open.value = true
+  void nextTick(() => {
+    updatePosition()
+    startPositionTracking()
+  })
+}
+
+function hideTooltip() {
+  open.value = false
+  cancelAnimationFrame(positionFrame)
+  stopPositionTracking()
+}
+
+onBeforeUnmount(() => {
+  cancelAnimationFrame(positionFrame)
+  stopPositionTracking()
+})
 </script>
 
 <template>
   <component
     :is="as"
+    ref="root"
+    v-bind="attrs"
     data-slot="data-tooltip"
     :class="cn('group/data-tooltip relative inline-block', props.class)"
+    @pointerenter="showTooltip"
+    @pointerleave="hideTooltip"
+    @focusin="showTooltip"
+    @focusout="hideTooltip"
   >
     <slot />
+  </component>
+
+  <Teleport to="body">
     <span
-      v-if="content || $slots.content"
+      v-if="open && (content || $slots.content)"
+      ref="tooltip"
       role="tooltip"
+      :data-placement="effectivePlacement"
       :class="cn(
-        'pointer-events-none absolute z-20 hidden rounded bg-foreground/80 p-1 text-[10px] leading-none text-background shadow-lg group-hover/data-tooltip:block group-focus-within/data-tooltip:block whitespace-normal break-words',
-        placementClass[placement],
+        'pointer-events-none fixed z-[340] w-max max-w-[min(22rem,calc(100vw-1.25rem))] whitespace-normal break-words rounded-lg border border-white/10 bg-popover/96 px-2.5 py-2 text-left text-[11px] leading-4 text-popover-foreground shadow-xl backdrop-blur-xl',
         props.contentClass,
       )"
-      :style="sizeStyle"
+      :style="tooltipStyle"
     >
-      <slot name="content">{{ content }}</slot>
+      <slot name="content"><span class="whitespace-pre-line">{{ content }}</span></slot>
     </span>
-  </component>
+  </Teleport>
 </template>

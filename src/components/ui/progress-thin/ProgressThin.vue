@@ -24,18 +24,18 @@ const heightStyle = computed(() => ({
 
 const statusClass = computed(() => {
   switch (props.status) {
-    case 'success': return 'bg-success'
-    case 'warning': return 'bg-warning'
-    case 'error': return 'bg-destructive'
-    case 'info': return 'bg-info'
-    default: return 'bg-primary'
+    case 'success': return 'bg-success/65'
+    case 'warning': return 'bg-warning/70'
+    case 'error': return 'bg-destructive/65'
+    case 'info': return 'bg-info/65'
+    default: return 'bg-primary/55'
   }
 })
 </script>
 
 <template>
   <div
-    :class="cn('relative w-full overflow-hidden rounded-full bg-muted', props.class)"
+    :class="cn('relative w-full overflow-hidden rounded-full bg-foreground/9', props.class)"
     :style="heightStyle"
   >
     <div

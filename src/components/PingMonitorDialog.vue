@@ -21,6 +21,8 @@ const PingChart = defineAsyncComponent(() => import('@/components/PingChart.vue'
     :title="`${nodeName} 延迟 / 丢包`"
     description="探测任务延迟、丢包率与波动统计"
     content-class="max-w-6xl"
+    body-class="sm:p-5"
+    mobile-fullscreen
     @update:open="emit('update:open', $event)"
   >
     <PingChart v-if="open && uuid" :uuid="uuid" />

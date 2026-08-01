@@ -15,7 +15,7 @@ const HTTPS_PROTOCOL_REGEX = /^https/
 interface ApiResponse<T = unknown> {
   status: 'success' | 'error'
   message: string
-  data: T
+  data?: T | null
 }
 
 /** 用户信息 */
@@ -215,7 +215,8 @@ function isApiResponse<T>(value: unknown): value is ApiResponse<T> {
   if (!value || typeof value !== 'object')
     return false
   const record = value as Record<string, unknown>
-  return (record.status === 'success' || record.status === 'error') && 'data' in record
+  return (record.status === 'success' || record.status === 'error')
+    && typeof record.message === 'string'
 }
 
 async function safeJson(response: Response): Promise<unknown> {
@@ -288,6 +289,9 @@ export class KomariApi {
       if (result.status === 'error') {
         throw new ApiError(result.message || 'Unknown error', 'error', response.status)
       }
+
+      if (!('data' in result) || result.data == null)
+        throw new ApiError('Invalid API response', 'error', response.status)
 
       return result.data
     }
@@ -380,7 +384,8 @@ export class KomariApi {
         throw new ApiError(result.message || 'Unknown error', 'error', response.status)
       }
 
-      return result.data
+      // Komari 的响应 data 带 omitempty；无返回值写接口成功时会直接省略 data。
+      return result.data as T
     }
     catch (error) {
       clearTimeout(timeoutId)
@@ -410,6 +415,14 @@ export class KomariApi {
    */
   async getPublicSettings(): Promise<PublicSettings> {
     return this.get<PublicSettings>('/public')
+  }
+
+  /**
+   * 覆盖指定主题的托管设置。调用方必须先读取并合并最新的完整设置，
+   * 因为 Komari 后端会整份替换该主题的配置。
+   */
+  async updateThemeSettings(theme: string, settings: Record<string, unknown>, signal?: AbortSignal): Promise<void> {
+    await this.post<void>(`/admin/theme/settings?theme=${encodeURIComponent(theme)}`, settings, signal)
   }
 
   /**
