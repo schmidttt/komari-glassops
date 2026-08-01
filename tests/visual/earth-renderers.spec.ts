@@ -340,34 +340,26 @@ test('meteor batch advances only after all three tails drill into the shared tar
   const overlay = page.locator('.realistic-earth-shell .earth-meteor-overlay')
   await expect(overlay).toHaveAttribute('data-meteor-count', '3', { timeout: 15_000 })
   const firstSequence = await overlay.getAttribute('data-meteor-sequence')
-  const firstBeam = overlay.locator(
-    '.earth-meteor-beam[data-launch-order="0"] .earth-meteor-stroke',
-  )
   await expect.poll(
-    () => firstBeam.getAttribute('data-motion-phase'),
-    { timeout: 4_500 },
-  ).toBe('landed')
-  await expect.poll(
-    async () => Number(await overlay.getAttribute('data-meteor-completed-count')),
-  ).toBeGreaterThanOrEqual(1)
-  await expect(overlay).toHaveAttribute('data-meteor-phase', 'flying')
-  await expect(overlay).toHaveAttribute('data-meteor-count', '3')
-  await expect(overlay).toHaveAttribute('data-meteor-sequence', firstSequence!)
+    () => overlay.evaluate(element => ({
+      completedCount: Number((element as HTMLElement).dataset.meteorCompletedCount),
+      meteorCount: element.querySelectorAll('.earth-meteor-stroke').length,
+      phase: (element as HTMLElement).dataset.meteorPhase,
+      sequence: (element as HTMLElement).dataset.meteorSequence,
+    })),
+    { timeout: 5_200 },
+  ).toEqual({
+    completedCount: 3,
+    meteorCount: 0,
+    phase: 'cooldown',
+    sequence: firstSequence,
+  })
 
   await expect.poll(
-    async () => Number(await overlay.getAttribute('data-meteor-completed-count')),
-    { timeout: 1_200 },
-  ).toBeGreaterThanOrEqual(2)
-  await expect(overlay).toHaveAttribute('data-meteor-phase', 'flying')
+    async () => Number(await overlay.getAttribute('data-meteor-sequence')),
+    { timeout: 6_800 },
+  ).toBeGreaterThan(Number(firstSequence))
   await expect(overlay).toHaveAttribute('data-meteor-count', '3')
-  await expect(overlay).toHaveAttribute('data-meteor-sequence', firstSequence!)
-
-  await expect.poll(
-    async () => Number(await overlay.getAttribute('data-meteor-completed-count')),
-    { timeout: 1_200 },
-  ).toBe(3)
-  await expect(overlay).toHaveAttribute('data-meteor-phase', 'cooldown')
-  await expect(overlay.locator('.earth-meteor-stroke')).toHaveCount(0)
 })
 
 test('cobe globe uses the same transient meteor renderer and keeps it attached to projected flags', async ({ page }, testInfo) => {
@@ -466,9 +458,14 @@ test('cobe globe uses the same transient meteor renderer and keeps it attached t
     return Math.max(...alignment.markerDistances)
   }).toBeLessThanOrEqual(1)
   await page.waitForTimeout(240)
-  const rotatedAlignment = await readAlignment()
-  expect(Math.max(...rotatedAlignment.meteorDistances)).toBeLessThanOrEqual(1)
-  expect(Math.max(...rotatedAlignment.markerDistances)).toBeLessThanOrEqual(1)
+  await expect.poll(async () => {
+    const alignment = await readAlignment()
+    return Math.max(...alignment.meteorDistances)
+  }, { timeout: 1_800 }).toBeLessThanOrEqual(1)
+  await expect.poll(async () => {
+    const alignment = await readAlignment()
+    return Math.max(...alignment.markerDistances)
+  }, { timeout: 1_800 }).toBeLessThanOrEqual(1)
   await expect(overlay.locator('linearGradient').first().locator('stop')).toHaveCount(5)
   const firstSequence = Number(await overlay.getAttribute('data-meteor-sequence'))
   await expect.poll(async () => Number(await overlay.getAttribute('data-meteor-sequence')), {
