@@ -169,6 +169,13 @@ test('custom node tag tooltip follows the responsive card boundary', async ({ pa
   const tooltip = page.getByRole('tooltip')
   await expect(tooltip).toBeVisible()
 
+  const desktopCardBounds = await firstCard.boundingBox()
+  const desktopTooltipBounds = await tooltip.boundingBox()
+  expect(desktopCardBounds).not.toBeNull()
+  expect(desktopTooltipBounds).not.toBeNull()
+  if (desktopCardBounds && desktopTooltipBounds && desktopCardBounds.width >= 360)
+    expect(desktopTooltipBounds.width).toBeGreaterThanOrEqual(350)
+
   async function expectAlignedAboveCard() {
     const [cardBounds, tooltipBounds] = await Promise.all([firstCard.boundingBox(), tooltip.boundingBox()])
     expect(cardBounds).not.toBeNull()
@@ -274,11 +281,44 @@ test('traffic and renewal summaries use subtle normal and alert states', async (
   const normalText = await normalRenewal.locator('.node-card-status-panel__value').evaluate(element => getComputedStyle(element).color)
   const warningText = await warningRenewal.locator('.node-card-status-panel__value').evaluate(element => getComputedStyle(element).color)
   const dangerText = await warningTraffic.locator('.node-card-status-panel__value').evaluate(element => getComputedStyle(element).color)
+  const normalTrafficLabel = await normalTraffic.locator('.node-card-status-panel__label').evaluate(element => getComputedStyle(element).color)
+  const warningTrafficLabel = await warningTraffic.locator('.node-card-status-panel__label').evaluate(element => getComputedStyle(element).color)
+  const normalRenewalLabel = await normalRenewal.locator('.node-card-status-panel__label').evaluate(element => getComputedStyle(element).color)
+  const warningRenewalLabel = await warningRenewal.locator('.node-card-status-panel__label').evaluate(element => getComputedStyle(element).color)
+  const renewalPrice = await normalRenewal.locator('.node-card-renewal-price').evaluate(element => getComputedStyle(element).color)
   expect(normalBackground).not.toBe(warningBackground)
   expect(warningText).not.toBe(normalText)
   expect(dangerText).not.toBe(normalText)
   expect(dangerText).not.toBe(warningText)
+  expect(normalTrafficLabel).toBe(warningTrafficLabel)
+  expect(normalRenewalLabel).toBe(warningRenewalLabel)
+  expect(normalTrafficLabel).not.toBe(normalRenewalLabel)
+  expect(renewalPrice).not.toBe(normalRenewalLabel)
 })
+
+for (const dark of [false, true]) {
+  test(`mini summaries retain fixed category colors in ${dark ? 'dark' : 'light'} mode`, async ({ page }) => {
+    await page.setViewportSize({ width: 1280, height: 900 })
+    await installKomariFixture(page, {
+      dark,
+      hideEarth: true,
+      nodeCardSize: 'mini',
+    })
+    await page.goto('/')
+
+    const firstCard = page.locator('.node-card').first()
+    const traffic = firstCard.locator('[data-node-traffic-summary]')
+    const renewal = firstCard.locator('[data-node-renewal-summary]')
+    await expect(traffic).toHaveAttribute('data-summary-kind', 'traffic')
+    await expect(renewal).toHaveAttribute('data-summary-kind', 'renewal')
+
+    const trafficLabel = await traffic.locator('.node-card-status-panel__label').evaluate(element => getComputedStyle(element).color)
+    const renewalLabel = await renewal.locator('.node-card-status-panel__label').evaluate(element => getComputedStyle(element).color)
+    const renewalPrice = await renewal.locator('.node-card-renewal-price').evaluate(element => getComputedStyle(element).color)
+    expect(trafficLabel).not.toBe(renewalLabel)
+    expect(renewalPrice).not.toBe(renewalLabel)
+  })
+}
 
 test('custom node tag switch hides card tags without leaving empty placeholders', async ({ page }) => {
   await page.setViewportSize({ width: 1280, height: 800 })

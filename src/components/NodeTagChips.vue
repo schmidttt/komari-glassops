@@ -45,6 +45,7 @@ const triggerLabel = computed(() => {
     placement="top"
     reference-selector=".node-card"
     constrain-to-reference
+    :width="360"
     as="span"
     class="inline-flex shrink-0"
     content-class="node-tag-tooltip !p-2.5"

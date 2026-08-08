@@ -426,6 +426,7 @@ function hasRegion(region: string | null | undefined): boolean {
           <div
             class="node-card-status-panel min-w-0 rounded-lg border p-2"
             :data-status="trafficSummaryTone"
+            data-summary-kind="traffic"
             data-node-traffic-summary
           >
             <div class="node-card-status-panel__label mb-1 flex items-center gap-1 text-[9px] font-semibold">
@@ -447,6 +448,7 @@ function hasRegion(region: string | null | undefined): boolean {
           <div
             class="node-card-status-panel min-w-0 rounded-lg border p-2"
             :data-status="renewalSummaryTone"
+            data-summary-kind="renewal"
             data-node-renewal-summary
           >
             <div class="node-card-status-panel__label mb-1 flex items-center gap-1 text-[9px] font-semibold">
@@ -614,6 +616,7 @@ function hasRegion(region: string | null | undefined): boolean {
           <div
             class="node-card-status-panel grid min-w-0 grid-cols-[2rem_minmax(0,1fr)] overflow-hidden rounded-lg border"
             :data-status="trafficSummaryTone"
+            data-summary-kind="traffic"
             data-node-traffic-summary
           >
             <div class="node-card-status-panel__label flex items-center justify-center px-1 py-1.5 text-center text-[10px] font-semibold leading-3.5">
@@ -634,6 +637,7 @@ function hasRegion(region: string | null | undefined): boolean {
           <div
             class="node-card-status-panel grid min-w-0 grid-cols-[2rem_minmax(0,1fr)] overflow-hidden rounded-lg border"
             :data-status="renewalSummaryTone"
+            data-summary-kind="renewal"
             data-node-renewal-summary
           >
             <div class="node-card-status-panel__label flex items-center justify-center px-1 py-1.5 text-center text-[10px] font-semibold leading-3.5">
@@ -689,56 +693,82 @@ function hasRegion(region: string | null | undefined): boolean {
 }
 
 .node-card-status-panel {
-  --node-summary-rgb: 71 85 105;
-  border-color: rgb(var(--node-summary-rgb) / 0.17);
-  background: rgb(var(--node-summary-rgb) / 0.045);
+  --node-summary-rgb: 51 65 85;
+  --node-summary-label-rgb: 71 85 105;
+  border-color: rgb(var(--node-summary-rgb) / 0.26);
+  background:
+    linear-gradient(135deg, rgb(var(--node-summary-label-rgb) / 0.08), transparent 62%),
+    rgb(var(--node-summary-rgb) / 0.075);
+  box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.16);
+}
+
+.node-card-status-panel[data-summary-kind='traffic'] {
+  --node-summary-label-rgb: 8 145 178;
+}
+
+.node-card-status-panel[data-summary-kind='renewal'] {
+  --node-summary-label-rgb: 109 40 217;
 }
 
 .node-card-status-panel[data-status='success'] {
-  --node-summary-rgb: 5 150 105;
+  --node-summary-rgb: 4 120 87;
 }
 
 .node-card-status-panel[data-status='warning'] {
-  --node-summary-rgb: 202 113 0;
+  --node-summary-rgb: 180 83 9;
 }
 
 .node-card-status-panel[data-status='danger'] {
-  --node-summary-rgb: 220 38 74;
+  --node-summary-rgb: 190 18 60;
 }
 
 .node-card-status-panel__label {
-  background: rgb(var(--node-summary-rgb) / 0.085);
-  color: rgb(var(--node-summary-rgb) / 0.94);
+  background: rgb(var(--node-summary-label-rgb) / 0.13);
+  color: rgb(var(--node-summary-label-rgb));
 }
 
 .node-card-status-panel__value {
-  color: rgb(var(--node-summary-rgb) / 0.94);
+  color: rgb(var(--node-summary-rgb));
+  font-weight: 500;
 }
 
 .node-card-renewal-price {
-  color: rgb(109 40 217 / 0.92);
+  color: var(--foreground);
+  font-weight: 500;
 }
 
 :global(.dark) .node-card-status-panel {
-  --node-summary-rgb: 148 163 184;
-  border-color: rgb(var(--node-summary-rgb) / 0.18);
-  background: rgb(var(--node-summary-rgb) / 0.055);
+  --node-summary-rgb: 226 232 240;
+  --node-summary-label-rgb: 203 213 225;
+  border-color: rgb(var(--node-summary-rgb) / 0.24);
+  background:
+    linear-gradient(135deg, rgb(var(--node-summary-label-rgb) / 0.09), transparent 62%),
+    rgb(var(--node-summary-rgb) / 0.08);
+  box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.07);
+}
+
+:global(.dark) .node-card-status-panel[data-summary-kind='traffic'] {
+  --node-summary-label-rgb: 103 232 249;
+}
+
+:global(.dark) .node-card-status-panel[data-summary-kind='renewal'] {
+  --node-summary-label-rgb: 216 180 254;
 }
 
 :global(.dark) .node-card-status-panel[data-status='success'] {
-  --node-summary-rgb: 52 211 153;
+  --node-summary-rgb: 110 231 183;
 }
 
 :global(.dark) .node-card-status-panel[data-status='warning'] {
-  --node-summary-rgb: 251 191 36;
+  --node-summary-rgb: 253 224 71;
 }
 
 :global(.dark) .node-card-status-panel[data-status='danger'] {
-  --node-summary-rgb: 251 113 133;
+  --node-summary-rgb: 253 164 175;
 }
 
 :global(.dark) .node-card-renewal-price {
-  color: rgb(196 181 253 / 0.94);
+  color: var(--foreground);
 }
 
 @container (max-width: 250px) {
