@@ -118,6 +118,18 @@ for (const cardSize of ['mini', 'compact', 'comfortable', 'large'] as const) {
     await expect(tagChips).toHaveCount(2)
     await expect(tagChips.nth(0)).toContainText('核心节点')
     await expect(tagChips.nth(1)).toContainText('视觉回归长标签')
+    await expect(tagChips.nth(0)).toHaveAttribute('data-tag-tone', '0')
+    await expect(tagChips.nth(1)).toHaveAttribute('data-tag-tone', '1')
+    const chipColors = await tagChips.evaluateAll(elements => elements.map((element) => {
+      const style = getComputedStyle(element)
+      return { background: style.backgroundColor, color: style.color }
+    }))
+    for (const chipColor of chipColors) {
+      expect(chipColor.background).not.toBe('transparent')
+      expect(chipColor.background).not.toBe('rgba(0, 0, 0, 0)')
+      expect(chipColor.color).not.toBe('rgba(0, 0, 0, 0)')
+    }
+    expect(chipColors[0].background).not.toBe(chipColors[1].background)
 
     const placement = await tooltip.getAttribute('data-placement')
     expect(placement).toBe('top')
@@ -173,6 +185,99 @@ test('custom node tag tooltip follows the responsive card boundary', async ({ pa
   await tagTrigger.hover()
   await expect(tooltip).toBeVisible()
   await expectAlignedAboveCard()
+})
+
+test('many custom tags stay highlighted, wrap within the card, and keep positional colors', async ({ page }) => {
+  await page.setViewportSize({ width: 980, height: 900 })
+  await installKomariFixture(page, {
+    dark: true,
+    hideEarth: true,
+    nodeCardSize: 'compact',
+    nodeCustomTagsVisible: true,
+    firstNodeTags: [
+      '搬瓦工三网优化<red>',
+      '第二个较长标签<gray>',
+      '第三个标签<yellow>',
+      '第四个标签<orange>',
+      '第五个标签<brown>',
+      '第六个较长标签<yellow>',
+    ].join(';'),
+  })
+  await page.goto('/')
+
+  const firstCard = page.locator('.node-card').first()
+  await firstCard.locator('[data-node-tag-trigger]').hover()
+  const tooltip = page.getByRole('tooltip')
+  await expect(tooltip).toBeVisible({ timeout: 500 })
+  const chips = tooltip.locator('[data-node-tag-chip]')
+  await expect(chips).toHaveCount(6)
+
+  const [cardBounds, tooltipBounds, chipLayout] = await Promise.all([
+    firstCard.boundingBox(),
+    tooltip.boundingBox(),
+    chips.evaluateAll(elements => elements.map((element) => {
+      const rect = element.getBoundingClientRect()
+      const style = getComputedStyle(element)
+      return {
+        top: Math.round(rect.top),
+        tone: element.getAttribute('data-tag-tone'),
+        background: style.backgroundColor,
+        color: style.color,
+      }
+    })),
+  ])
+  expect(cardBounds).not.toBeNull()
+  expect(tooltipBounds).not.toBeNull()
+  if (cardBounds && tooltipBounds)
+    expect(tooltipBounds.width).toBeLessThanOrEqual(cardBounds.width + 1)
+  expect(new Set(chipLayout.map(chip => chip.top)).size).toBeGreaterThan(1)
+  expect(chipLayout.map(chip => chip.tone)).toEqual(['0', '1', '2', '3', '4', '5'])
+  for (const chip of chipLayout) {
+    expect(chip.background).not.toBe('transparent')
+    expect(chip.background).not.toBe('rgba(0, 0, 0, 0)')
+    expect(chip.color).not.toBe('rgba(0, 0, 0, 0)')
+  }
+
+  const firstPositionColor = chipLayout[0].background
+  const secondCard = page.locator('.node-card').nth(1)
+  await secondCard.locator('[data-node-tag-trigger]').hover()
+  await expect(page.getByRole('tooltip')).toBeVisible({ timeout: 500 })
+  const secondCardFirstChip = page.getByRole('tooltip').locator('[data-node-tag-chip]').first()
+  await expect(secondCardFirstChip).toHaveAttribute('data-tag-tone', '0')
+  await expect.poll(async () => secondCardFirstChip.evaluate(element => getComputedStyle(element).backgroundColor))
+    .toBe(firstPositionColor)
+})
+
+test('traffic and renewal summaries use subtle normal and alert states', async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 1000 })
+  await installKomariFixture(page, {
+    dark: true,
+    hideEarth: true,
+    nodeCardSize: 'compact',
+  })
+  await page.goto('/')
+
+  const normalCard = page.getByRole('button', { name: '查看节点 主控-洛杉矶 详情', exact: true })
+  const warningCard = page.getByRole('button', { name: '查看节点 台北-流量预警 详情', exact: true })
+  const normalTraffic = normalCard.locator('[data-node-traffic-summary]')
+  const normalRenewal = normalCard.locator('[data-node-renewal-summary]')
+  const warningTraffic = warningCard.locator('[data-node-traffic-summary]')
+  const warningRenewal = warningCard.locator('[data-node-renewal-summary]')
+
+  await expect(normalTraffic).toHaveAttribute('data-status', 'success')
+  await expect(normalRenewal).toHaveAttribute('data-status', 'success')
+  await expect(warningTraffic).toHaveAttribute('data-status', 'danger')
+  await expect(warningRenewal).toHaveAttribute('data-status', 'warning')
+
+  const normalBackground = await normalTraffic.evaluate(element => getComputedStyle(element).backgroundColor)
+  const warningBackground = await warningTraffic.evaluate(element => getComputedStyle(element).backgroundColor)
+  const normalText = await normalRenewal.locator('.node-card-status-panel__value').evaluate(element => getComputedStyle(element).color)
+  const warningText = await warningRenewal.locator('.node-card-status-panel__value').evaluate(element => getComputedStyle(element).color)
+  const dangerText = await warningTraffic.locator('.node-card-status-panel__value').evaluate(element => getComputedStyle(element).color)
+  expect(normalBackground).not.toBe(warningBackground)
+  expect(warningText).not.toBe(normalText)
+  expect(dangerText).not.toBe(normalText)
+  expect(dangerText).not.toBe(warningText)
 })
 
 test('custom node tag switch hides card tags without leaving empty placeholders', async ({ page }) => {

@@ -17,7 +17,7 @@ import { HOME_PING_HOUR_OPTIONS } from '@/utils/homePingConfig'
 import { getDiskPercentage, getMemoryPercentage, getTrafficUsed, getTrafficUsedPercentage, hasTrafficLimit } from '@/utils/nodeMetricsHelper'
 import { getOSImage, getOSName } from '@/utils/osImageHelper'
 import { getRegionCode, getRegionDisplayName } from '@/utils/regionHelper'
-import { formatPriceWithCycle, getExpireText, hasIPv4, hasIPv6 } from '@/utils/tagHelper'
+import { formatPriceWithCycle, getExpireStatus, getExpireText, hasIPv4, hasIPv6, isFreeNode } from '@/utils/tagHelper'
 
 const props = withDefaults(defineProps<{
   node: NodeData
@@ -76,11 +76,34 @@ const diskStatus = computed(() => getStatus(diskPercentage.value))
 const trafficUsed = computed(() => getTrafficUsed(props.node))
 const trafficPercentage = computed(() => getTrafficUsedPercentage(props.node))
 const trafficStatus = computed(() => getStatus(trafficPercentage.value))
+type SummaryTone = 'neutral' | 'success' | 'warning' | 'danger'
+const trafficSummaryTone = computed<SummaryTone>(() => {
+  if (!hasTrafficLimit(props.node))
+    return 'neutral'
+  if (trafficPercentage.value >= 100)
+    return 'danger'
+  if (trafficPercentage.value >= appStore.homeTrafficWarningThreshold)
+    return 'warning'
+  return 'success'
+})
 const trafficUsageText = computed(() => {
   const limit = hasTrafficLimit(props.node) ? formatBytes(props.node.traffic_limit) : '∞'
   return `${formatBytes(trafficUsed.value)} / ${limit}`
 })
 const remainingTimeText = computed(() => getExpireText(props.node.expired_at, appStore.lang))
+const renewalSummaryTone = computed<SummaryTone>(() => {
+  if (isFreeNode(props.node.price, props.node.tags))
+    return 'neutral'
+
+  const status = getExpireStatus(props.node.expired_at)
+  if (status === 'expired' || status === 'critical')
+    return 'danger'
+  if (status === 'warning')
+    return 'warning'
+  if (status === 'normal')
+    return 'success'
+  return 'neutral'
+})
 const renewalPriceText = computed(() => {
   if (!appStore.privateFeaturesAllowed && appStore.hidePriceWhenLoggedOut)
     return '***'
@@ -400,12 +423,16 @@ function hasRegion(region: string | null | undefined): boolean {
             </div>
           </div>
 
-          <div class="min-w-0 rounded-lg bg-slate-500/8 p-2">
-            <div class="mb-1 flex items-center gap-1 text-[9px] font-semibold text-foreground/75">
+          <div
+            class="node-card-status-panel min-w-0 rounded-lg border p-2"
+            :data-status="trafficSummaryTone"
+            data-node-traffic-summary
+          >
+            <div class="node-card-status-panel__label mb-1 flex items-center gap-1 text-[9px] font-semibold">
               <Icon icon="tabler:arrows-transfer-up-down" width="11" height="11" />
               <span class="truncate">累计流量</span>
             </div>
-            <div class="space-y-0.5 text-[9px] text-foreground/85 tabular-nums">
+            <div class="node-card-status-panel__value space-y-0.5 text-[9px] tabular-nums">
               <div class="flex min-w-0 items-center gap-1">
                 <Icon icon="tabler:upload" width="10" height="10" class="shrink-0" />
                 <span class="truncate">{{ formatBytes(props.node.net_total_up ?? 0) }}</span>
@@ -417,16 +444,20 @@ function hasRegion(region: string | null | undefined): boolean {
             </div>
           </div>
 
-          <div class="min-w-0 rounded-lg bg-slate-500/8 p-2">
-            <div class="mb-1 flex items-center gap-1 text-[9px] font-semibold text-foreground/75">
+          <div
+            class="node-card-status-panel min-w-0 rounded-lg border p-2"
+            :data-status="renewalSummaryTone"
+            data-node-renewal-summary
+          >
+            <div class="node-card-status-panel__label mb-1 flex items-center gap-1 text-[9px] font-semibold">
               <Icon icon="tabler:calendar-dollar" width="11" height="11" />
               <span class="truncate">续费信息</span>
             </div>
-            <div class="space-y-0.5 text-[9px] text-foreground/85 tabular-nums">
-              <div class="truncate">
+            <div class="space-y-0.5 text-[9px] tabular-nums">
+              <div class="node-card-status-panel__value truncate">
                 {{ remainingTimeText === '-' ? '-' : `剩余 ${remainingTimeText}` }}
               </div>
-              <div class="truncate">
+              <div class="node-card-renewal-price truncate">
                 {{ renewalPriceText }}
               </div>
             </div>
@@ -580,11 +611,15 @@ function hasRegion(region: string | null | undefined): boolean {
         </div>
 
         <div class="node-card-section-divider node-card-summary-grid grid grid-cols-2 gap-1.5 border-t pt-2.5">
-          <div class="grid min-w-0 grid-cols-[2rem_minmax(0,1fr)] overflow-hidden rounded-lg border border-black/8 bg-black/[0.035] dark:border-white/9 dark:bg-white/[0.035]">
-            <div class="flex items-center justify-center bg-slate-500/10 px-1 py-1.5 text-center text-[10px] font-semibold leading-3.5 text-foreground/80">
+          <div
+            class="node-card-status-panel grid min-w-0 grid-cols-[2rem_minmax(0,1fr)] overflow-hidden rounded-lg border"
+            :data-status="trafficSummaryTone"
+            data-node-traffic-summary
+          >
+            <div class="node-card-status-panel__label flex items-center justify-center px-1 py-1.5 text-center text-[10px] font-semibold leading-3.5">
               <span>累计<br>流量</span>
             </div>
-            <div class="flex min-w-0 flex-col justify-center gap-0.5 px-1.5 py-1.5 text-[10px] font-normal text-foreground/90 tabular-nums">
+            <div class="node-card-status-panel__value flex min-w-0 flex-col justify-center gap-0.5 px-1.5 py-1.5 text-[10px] font-normal tabular-nums">
               <div class="flex min-w-0 items-center gap-1">
                 <Icon icon="tabler:upload" width="11" height="11" class="shrink-0" />
                 <span class="min-w-0 whitespace-nowrap">{{ formatBytes(props.node.net_total_up ?? 0) }}</span>
@@ -596,15 +631,19 @@ function hasRegion(region: string | null | undefined): boolean {
             </div>
           </div>
 
-          <div class="grid min-w-0 grid-cols-[2rem_minmax(0,1fr)] overflow-hidden rounded-lg border border-black/8 bg-black/[0.035] dark:border-white/9 dark:bg-white/[0.035]">
-            <div class="flex items-center justify-center bg-slate-500/10 px-1 py-1.5 text-center text-[10px] font-semibold leading-3.5 text-foreground/80">
+          <div
+            class="node-card-status-panel grid min-w-0 grid-cols-[2rem_minmax(0,1fr)] overflow-hidden rounded-lg border"
+            :data-status="renewalSummaryTone"
+            data-node-renewal-summary
+          >
+            <div class="node-card-status-panel__label flex items-center justify-center px-1 py-1.5 text-center text-[10px] font-semibold leading-3.5">
               <span>续费<br>信息</span>
             </div>
-            <div class="flex min-w-0 flex-col justify-center gap-0.5 px-1.5 py-1.5 text-[10px] font-normal text-foreground/90 tabular-nums">
-              <div class="whitespace-nowrap">
+            <div class="flex min-w-0 flex-col justify-center gap-0.5 px-1.5 py-1.5 text-[10px] font-normal tabular-nums">
+              <div class="node-card-renewal-price whitespace-nowrap">
                 {{ renewalPriceText }}
               </div>
-              <div class="whitespace-nowrap">
+              <div class="node-card-status-panel__value whitespace-nowrap">
                 {{ remainingTimeText === '-' ? '-' : `剩余 ${remainingTimeText}` }}
               </div>
             </div>
@@ -647,6 +686,59 @@ function hasRegion(region: string | null | undefined): boolean {
 <style scoped>
 .node-card {
   container-type: inline-size;
+}
+
+.node-card-status-panel {
+  --node-summary-rgb: 71 85 105;
+  border-color: rgb(var(--node-summary-rgb) / 0.17);
+  background: rgb(var(--node-summary-rgb) / 0.045);
+}
+
+.node-card-status-panel[data-status='success'] {
+  --node-summary-rgb: 5 150 105;
+}
+
+.node-card-status-panel[data-status='warning'] {
+  --node-summary-rgb: 202 113 0;
+}
+
+.node-card-status-panel[data-status='danger'] {
+  --node-summary-rgb: 220 38 74;
+}
+
+.node-card-status-panel__label {
+  background: rgb(var(--node-summary-rgb) / 0.085);
+  color: rgb(var(--node-summary-rgb) / 0.94);
+}
+
+.node-card-status-panel__value {
+  color: rgb(var(--node-summary-rgb) / 0.94);
+}
+
+.node-card-renewal-price {
+  color: rgb(109 40 217 / 0.92);
+}
+
+:global(.dark) .node-card-status-panel {
+  --node-summary-rgb: 148 163 184;
+  border-color: rgb(var(--node-summary-rgb) / 0.18);
+  background: rgb(var(--node-summary-rgb) / 0.055);
+}
+
+:global(.dark) .node-card-status-panel[data-status='success'] {
+  --node-summary-rgb: 52 211 153;
+}
+
+:global(.dark) .node-card-status-panel[data-status='warning'] {
+  --node-summary-rgb: 251 191 36;
+}
+
+:global(.dark) .node-card-status-panel[data-status='danger'] {
+  --node-summary-rgb: 251 113 133;
+}
+
+:global(.dark) .node-card-renewal-price {
+  color: rgb(196 181 253 / 0.94);
 }
 
 @container (max-width: 250px) {

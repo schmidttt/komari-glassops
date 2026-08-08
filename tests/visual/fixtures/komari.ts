@@ -54,6 +54,7 @@ export interface VisualFixtureOptions {
   approximatePingMetricStats?: boolean
   metricRangeAware?: boolean
   nodeCustomTagsVisible?: boolean
+  firstNodeTags?: string
   homePingTaskSelections?: Record<string, number[]>
   loggedIn?: boolean
 }
@@ -281,6 +282,15 @@ function jsonRpcResult(id: unknown, result: unknown) {
 async function handleRpc(route: Route, options: VisualFixtureOptions = {}): Promise<void> {
   const payload = route.request().postDataJSON() as { id: unknown, method: string, params?: Record<string, unknown> }
   const uuid = typeof payload.params?.uuid === 'string' ? payload.params.uuid : uuidFor(0)
+  const fixtureClients = options.firstNodeTags === undefined
+    ? clients
+    : {
+        ...clients,
+        [uuidFor(0)]: {
+          ...clients[uuidFor(0)],
+          tags: options.firstNodeTags,
+        },
+      }
   const pingRecords = Array.from({ length: 48 }, (_, index) => ({
     task_id: 1,
     client: uuid,
@@ -294,7 +304,7 @@ async function handleRpc(route: Route, options: VisualFixtureOptions = {}): Prom
     loss: index === 1 ? 3.2 : 0,
     weight: index + 1,
     default_on: true,
-    clients: Object.keys(clients),
+    clients: Object.keys(fixtureClients),
   }))
   let result: unknown
 
@@ -303,7 +313,7 @@ async function handleRpc(route: Route, options: VisualFixtureOptions = {}): Prom
       result = 'pong'
       break
     case 'common:getNodes':
-      result = clients
+      result = fixtureClients
       break
     case 'common:getNodesLatestStatus':
       result = statuses
@@ -363,7 +373,7 @@ async function handleRpc(route: Route, options: VisualFixtureOptions = {}): Prom
       }
       break
     case 'public:getNodesInformation':
-      result = Object.values(clients)
+      result = Object.values(fixtureClients)
       break
     case 'public:getMe':
       result = { logged_in: false }

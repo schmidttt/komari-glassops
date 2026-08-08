@@ -14,6 +14,25 @@ const props = withDefaults(defineProps<{
 })
 
 const parsedTags = computed(() => parseTags(props.tags))
+const TAG_TONES = [
+  { light: '#dc264b', dark: '#fb7185' },
+  { light: '#0284c7', dark: '#38bdf8' },
+  { light: '#b77900', dark: '#facc15' },
+  { light: '#7c3aed', dark: '#a78bfa' },
+  { light: '#c65a12', dark: '#fb923c' },
+  { light: '#07845f', dark: '#34d399' },
+  { light: '#c02678', dark: '#f472b6' },
+  { light: '#087f93', dark: '#22d3ee' },
+] as const
+
+function getTagToneStyle(index: number): Record<string, string> {
+  const tone = TAG_TONES[index % TAG_TONES.length] ?? TAG_TONES[0]
+  return {
+    '--node-tag-color': tone.light,
+    '--node-tag-color-dark': tone.dark,
+  }
+}
+
 const triggerLabel = computed(() => {
   const prefix = props.nodeName ? `${props.nodeName} 的` : ''
   return `查看${prefix}自定义标签（${parsedTags.value.length} 个）`
@@ -28,7 +47,7 @@ const triggerLabel = computed(() => {
     constrain-to-reference
     as="span"
     class="inline-flex shrink-0"
-    content-class="node-tag-tooltip !max-w-none !p-2"
+    content-class="node-tag-tooltip !p-2.5"
   >
     <button
       type="button"
@@ -56,8 +75,8 @@ const triggerLabel = computed(() => {
     </button>
 
     <template #content>
-      <span class="flex max-w-full flex-wrap items-center gap-x-2 gap-y-1.5" aria-label="节点自定义标签">
-        <span class="inline-flex shrink-0 items-center gap-1.5 whitespace-nowrap font-semibold text-popover-foreground">
+      <span class="grid min-w-0 max-w-full gap-2" aria-label="节点自定义标签">
+        <span class="inline-flex min-w-0 items-center gap-1.5 whitespace-nowrap font-semibold text-popover-foreground">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" class="size-3.5 text-selection" aria-hidden="true">
             <path stroke-linecap="round" stroke-linejoin="round" d="M3.75 6.6V4.75a1 1 0 0 1 1-1H6.6a2 2 0 0 1 1.41.59l9.9 9.9a2 2 0 0 1 0 2.82l-2.85 2.85a2 2 0 0 1-2.82 0l-9.9-9.9A2 2 0 0 1 1.75 8.6V6.75a1 1 0 0 1 1-1h1" />
             <circle cx="6.25" cy="7.25" r="1.15" />
@@ -65,22 +84,36 @@ const triggerLabel = computed(() => {
           <span>自定义标签</span>
           <span class="text-[10px] tabular-nums text-muted-foreground">{{ parsedTags.length }}</span>
         </span>
-        <span class="h-4 w-px shrink-0 bg-border/65" aria-hidden="true" />
-        <span
-          v-for="tag in parsedTags"
-          :key="`${tag.text}-${tag.color}`"
-          data-node-tag-chip
-          class="inline-flex max-w-full items-center gap-1 rounded-full border px-2 py-1 text-[10px] font-semibold leading-none"
-          :style="{
-            borderColor: `${tag.hex}55`,
-            backgroundColor: `${tag.hex}16`,
-            color: tag.hex,
-          }"
-        >
-          <span class="size-1 shrink-0 rounded-full bg-current opacity-80" aria-hidden="true" />
-          <span class="break-all">{{ tag.text }}</span>
+        <span class="h-px w-full bg-border/65" aria-hidden="true" />
+        <span class="flex min-w-0 max-w-full flex-wrap gap-1.5">
+          <span
+            v-for="(tag, index) in parsedTags"
+            :key="`${tag.text}-${index}`"
+            data-node-tag-chip
+            :data-tag-tone="index % TAG_TONES.length"
+            class="node-tag-chip inline-flex max-w-full items-center gap-1 rounded-full border px-2 py-1 text-[10px] font-semibold leading-none"
+            :style="getTagToneStyle(index)"
+          >
+            <span class="size-1 shrink-0 rounded-full bg-current opacity-90" aria-hidden="true" />
+            <span class="break-all">{{ tag.text }}</span>
+          </span>
         </span>
       </span>
     </template>
   </DataTooltip>
 </template>
+
+<style scoped>
+.node-tag-chip {
+  border-color: color-mix(in srgb, var(--node-tag-color) 48%, transparent);
+  background: color-mix(in srgb, var(--node-tag-color) 15%, transparent);
+  color: var(--node-tag-color);
+  box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.09);
+}
+
+:global(.dark) .node-tag-chip {
+  border-color: color-mix(in srgb, var(--node-tag-color-dark) 54%, transparent);
+  background: color-mix(in srgb, var(--node-tag-color-dark) 18%, transparent);
+  color: var(--node-tag-color-dark);
+}
+</style>
