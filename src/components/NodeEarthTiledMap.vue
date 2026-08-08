@@ -413,6 +413,7 @@ function hideClusterTooltip() {
         <defs>
           <linearGradient id="map-ocean" x1="0" y1="0" x2="0" y2="1">
             <stop offset="0%" class="ocean-stop-top" />
+            <stop offset="54%" class="ocean-stop-middle" />
             <stop offset="100%" class="ocean-stop-bottom" />
           </linearGradient>
           <pattern id="paper-grain" width="72" height="72" patternUnits="userSpaceOnUse">
@@ -619,25 +620,29 @@ function hideClusterTooltip() {
 }
 
 .ocean-stop-top {
-  stop-color: rgb(244 248 249 / 0.98);
+  stop-color: rgb(232 244 248 / 0.99);
+}
+
+.ocean-stop-middle {
+  stop-color: rgb(215 234 241 / 0.985);
 }
 
 .ocean-stop-bottom {
-  stop-color: rgb(222 236 240 / 0.96);
+  stop-color: rgb(198 223 232 / 0.98);
 }
 
 .paper-line {
   fill: none;
-  stroke: rgb(71 85 105 / 0.055);
+  stroke: rgb(14 116 144 / 0.11);
   stroke-width: 1;
 }
 
 .paper-overlay {
-  opacity: 0.7;
+  opacity: 0.82;
 }
 
 .graticule line {
-  stroke: rgb(14 116 144 / 0.075);
+  stroke: rgb(14 116 144 / 0.11);
   stroke-width: 1;
   vector-effect: non-scaling-stroke;
 }
@@ -1136,6 +1141,10 @@ function hideClusterTooltip() {
 
 :global(.dark .ocean-stop-top) {
   stop-color: rgb(10 31 43 / 0.98);
+}
+
+:global(.dark .ocean-stop-middle) {
+  stop-color: rgb(7 25 36 / 0.985);
 }
 
 :global(.dark .ocean-stop-bottom) {

@@ -100,6 +100,53 @@ for (const { renderer, selector, dark, label } of EARTH_RENDERERS) {
   })
 }
 
+test('tiled light ocean keeps visible depth while the dark palette stays unchanged', async ({ context }) => {
+  const lightPage = await context.newPage()
+  const darkPage = await context.newPage()
+  await Promise.all([
+    openEarthPage(lightPage, 'tiled', false),
+    openEarthPage(darkPage, 'tiled', true),
+  ])
+
+  const readPalette = async (page: Page) => page.locator('.earth-map-shell').evaluate((shell) => {
+    const readColor = (selector: string, property: string): number[] => {
+      const element = shell.querySelector<SVGElement>(selector)
+      if (!element)
+        throw new Error(`Missing tiled-map layer: ${selector}`)
+      return getComputedStyle(element)
+        .getPropertyValue(property)
+        .match(/[\d.]+/g)
+        ?.map(Number) ?? []
+    }
+    const overlay = shell.querySelector<SVGElement>('.paper-overlay')
+    if (!overlay)
+      throw new Error('Missing tiled-map paper overlay')
+
+    return {
+      bottom: readColor('.ocean-stop-bottom', 'stop-color'),
+      graticule: readColor('.graticule line', 'stroke'),
+      middle: readColor('.ocean-stop-middle', 'stop-color'),
+      paper: readColor('.paper-line', 'stroke'),
+      paperOpacity: Number(getComputedStyle(overlay).opacity),
+      top: readColor('.ocean-stop-top', 'stop-color'),
+    }
+  })
+
+  const lightPalette = await readPalette(lightPage)
+  expect(lightPalette.top.slice(0, 3)).toEqual([232, 244, 248])
+  expect(lightPalette.middle.slice(0, 3)).toEqual([215, 234, 241])
+  expect(lightPalette.bottom.slice(0, 3)).toEqual([198, 223, 232])
+  expect(lightPalette.paper.at(3)).toBeGreaterThanOrEqual(0.1)
+  expect(lightPalette.graticule.at(3)).toBeGreaterThanOrEqual(0.1)
+  expect(lightPalette.paperOpacity).toBeGreaterThanOrEqual(0.8)
+
+  const darkPalette = await readPalette(darkPage)
+  expect(darkPalette.top.slice(0, 3)).toEqual([10, 31, 43])
+  expect(darkPalette.bottom.slice(0, 3)).toEqual([5, 20, 30])
+  expect(darkPalette.paper.at(3)).toBeLessThanOrEqual(0.05)
+  expect(darkPalette.graticule.at(3)).toBeCloseTo(0.13, 2)
+})
+
 test('realistic and cobe share the same short-wide globe geometry', async ({ context }, testInfo) => {
   const realisticPage = await context.newPage()
   const cobePage = await context.newPage()
@@ -734,7 +781,7 @@ test('tiled map uses legible region indexes and exposes server status on map and
   await page.goto('/')
 
   const mapMarkers = page.locator('.node-marker-group')
-  await expect(mapMarkers).toHaveCount(8)
+  await expect(mapMarkers).toHaveCount(12)
   await expect(mapMarkers.nth(0).locator('.cluster-index text')).toHaveText('1')
   await expect(mapMarkers.nth(1).locator('.cluster-index text')).toHaveText('2')
 

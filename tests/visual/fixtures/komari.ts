@@ -55,6 +55,7 @@ export interface VisualFixtureOptions {
   metricRangeAware?: boolean
   nodeCustomTagsVisible?: boolean
   firstNodeTags?: string
+  firstNodeTrafficLimit?: number
   homePingTaskSelections?: Record<string, number[]>
   loggedIn?: boolean
 }
@@ -282,13 +283,14 @@ function jsonRpcResult(id: unknown, result: unknown) {
 async function handleRpc(route: Route, options: VisualFixtureOptions = {}): Promise<void> {
   const payload = route.request().postDataJSON() as { id: unknown, method: string, params?: Record<string, unknown> }
   const uuid = typeof payload.params?.uuid === 'string' ? payload.params.uuid : uuidFor(0)
-  const fixtureClients = options.firstNodeTags === undefined
+  const fixtureClients = options.firstNodeTags === undefined && options.firstNodeTrafficLimit === undefined
     ? clients
     : {
         ...clients,
         [uuidFor(0)]: {
           ...clients[uuidFor(0)],
-          tags: options.firstNodeTags,
+          tags: options.firstNodeTags ?? clients[uuidFor(0)].tags,
+          traffic_limit: options.firstNodeTrafficLimit ?? clients[uuidFor(0)].traffic_limit,
         },
       }
   const pingRecords = Array.from({ length: 48 }, (_, index) => ({

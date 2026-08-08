@@ -406,8 +406,13 @@ function hasRegion(region: string | null | undefined): boolean {
         </div>
 
         <div class="grid grid-cols-3 gap-1.5">
-          <div class="min-w-0 rounded-lg bg-slate-500/8 p-2">
-            <div class="mb-1 flex items-center gap-1 text-[9px] font-semibold text-foreground/75">
+          <div
+            class="node-card-status-panel min-w-0 rounded-lg border p-2"
+            data-status="neutral"
+            data-summary-kind="realtime"
+            data-node-realtime-summary
+          >
+            <div class="node-card-status-panel__label mb-1 flex items-center gap-1 text-[9px] font-semibold text-foreground/85">
               <Icon icon="tabler:gauge" width="11" height="11" />
               <span class="truncate">实时速率</span>
             </div>
@@ -429,7 +434,7 @@ function hasRegion(region: string | null | undefined): boolean {
             data-summary-kind="traffic"
             data-node-traffic-summary
           >
-            <div class="node-card-status-panel__label mb-1 flex items-center gap-1 text-[9px] font-semibold">
+            <div class="node-card-status-panel__label mb-1 flex items-center gap-1 text-[9px] font-semibold text-foreground/85">
               <Icon icon="tabler:arrows-transfer-up-down" width="11" height="11" />
               <span class="truncate">累计流量</span>
             </div>
@@ -451,7 +456,7 @@ function hasRegion(region: string | null | undefined): boolean {
             data-summary-kind="renewal"
             data-node-renewal-summary
           >
-            <div class="node-card-status-panel__label mb-1 flex items-center gap-1 text-[9px] font-semibold">
+            <div class="node-card-status-panel__label mb-1 flex items-center gap-1 text-[9px] font-semibold text-foreground/85">
               <Icon icon="tabler:calendar-dollar" width="11" height="11" />
               <span class="truncate">续费信息</span>
             </div>
@@ -619,7 +624,7 @@ function hasRegion(region: string | null | undefined): boolean {
             data-summary-kind="traffic"
             data-node-traffic-summary
           >
-            <div class="node-card-status-panel__label flex items-center justify-center px-1 py-1.5 text-center text-[10px] font-semibold leading-3.5">
+            <div class="node-card-status-panel__label flex items-center justify-center px-1 py-1.5 text-center text-[10px] font-semibold leading-3.5 text-foreground/85">
               <span>累计<br>流量</span>
             </div>
             <div class="node-card-status-panel__value flex min-w-0 flex-col justify-center gap-0.5 px-1.5 py-1.5 text-[10px] font-normal tabular-nums">
@@ -640,7 +645,7 @@ function hasRegion(region: string | null | undefined): boolean {
             data-summary-kind="renewal"
             data-node-renewal-summary
           >
-            <div class="node-card-status-panel__label flex items-center justify-center px-1 py-1.5 text-center text-[10px] font-semibold leading-3.5">
+            <div class="node-card-status-panel__label flex items-center justify-center px-1 py-1.5 text-center text-[10px] font-semibold leading-3.5 text-foreground/85">
               <span>续费<br>信息</span>
             </div>
             <div class="flex min-w-0 flex-col justify-center gap-0.5 px-1.5 py-1.5 text-[10px] font-normal tabular-nums">
@@ -694,81 +699,64 @@ function hasRegion(region: string | null | undefined): boolean {
 
 .node-card-status-panel {
   --node-summary-rgb: 51 65 85;
-  --node-summary-label-rgb: 71 85 105;
-  border-color: rgb(var(--node-summary-rgb) / 0.26);
-  background:
-    linear-gradient(135deg, rgb(var(--node-summary-label-rgb) / 0.08), transparent 62%),
-    rgb(var(--node-summary-rgb) / 0.075);
-  box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.16);
-}
-
-.node-card-status-panel[data-summary-kind='traffic'] {
-  --node-summary-label-rgb: 8 145 178;
-}
-
-.node-card-status-panel[data-summary-kind='renewal'] {
-  --node-summary-label-rgb: 109 40 217;
+  --node-summary-value-color: color-mix(in oklab, var(--foreground) 72%, transparent);
+  border-color: rgb(var(--node-summary-rgb) / 0.32);
+  background-color: rgb(var(--node-summary-rgb) / 0.065);
+  background-image: none;
+  box-shadow: none;
 }
 
 .node-card-status-panel[data-status='success'] {
   --node-summary-rgb: 4 120 87;
+  --node-summary-value-color: rgb(4 120 87);
 }
 
 .node-card-status-panel[data-status='warning'] {
   --node-summary-rgb: 180 83 9;
+  --node-summary-value-color: rgb(180 83 9);
 }
 
 .node-card-status-panel[data-status='danger'] {
   --node-summary-rgb: 190 18 60;
+  --node-summary-value-color: rgb(190 18 60);
 }
 
 .node-card-status-panel__label {
-  background: rgb(var(--node-summary-label-rgb) / 0.13);
-  color: rgb(var(--node-summary-label-rgb));
+  background: transparent;
+  color: color-mix(in oklab, var(--foreground) 85%, transparent);
 }
 
 .node-card-status-panel__value {
-  color: rgb(var(--node-summary-rgb));
-  font-weight: 500;
+  color: var(--node-summary-value-color);
+  font-weight: 600;
 }
 
 .node-card-renewal-price {
-  color: var(--foreground);
-  font-weight: 500;
+  color: var(--node-summary-value-color);
+  font-weight: 600;
 }
 
 :global(.dark) .node-card-status-panel {
-  --node-summary-rgb: 226 232 240;
-  --node-summary-label-rgb: 203 213 225;
-  border-color: rgb(var(--node-summary-rgb) / 0.24);
-  background:
-    linear-gradient(135deg, rgb(var(--node-summary-label-rgb) / 0.09), transparent 62%),
-    rgb(var(--node-summary-rgb) / 0.08);
-  box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.07);
-}
-
-:global(.dark) .node-card-status-panel[data-summary-kind='traffic'] {
-  --node-summary-label-rgb: 103 232 249;
-}
-
-:global(.dark) .node-card-status-panel[data-summary-kind='renewal'] {
-  --node-summary-label-rgb: 216 180 254;
+  --node-summary-rgb: 148 163 184;
+  border-color: rgb(var(--node-summary-rgb) / 0.26);
+  background-color: rgb(var(--node-summary-rgb) / 0.07);
+  background-image: none;
+  box-shadow: none;
 }
 
 :global(.dark) .node-card-status-panel[data-status='success'] {
   --node-summary-rgb: 110 231 183;
+  --node-summary-value-color: rgb(110 231 183);
 }
 
 :global(.dark) .node-card-status-panel[data-status='warning'] {
   --node-summary-rgb: 253 224 71;
+  --node-summary-value-color: rgb(253 224 71);
 }
 
 :global(.dark) .node-card-status-panel[data-status='danger'] {
   --node-summary-rgb: 253 164 175;
-}
-
-:global(.dark) .node-card-renewal-price {
-  color: var(--foreground);
+  --node-summary-value-color: rgb(253 164 175);
 }
 
 @container (max-width: 250px) {

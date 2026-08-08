@@ -15,14 +15,14 @@ const props = withDefaults(defineProps<{
 
 const parsedTags = computed(() => parseTags(props.tags))
 const TAG_TONES = [
-  { light: '#dc264b', dark: '#fb7185' },
-  { light: '#0284c7', dark: '#38bdf8' },
-  { light: '#b77900', dark: '#facc15' },
-  { light: '#7c3aed', dark: '#a78bfa' },
-  { light: '#c65a12', dark: '#fb923c' },
-  { light: '#07845f', dark: '#34d399' },
-  { light: '#c02678', dark: '#f472b6' },
-  { light: '#087f93', dark: '#22d3ee' },
+  { light: '#c8103e', dark: '#ff8da1' },
+  { light: '#036fa5', dark: '#67d4ff' },
+  { light: '#9a6100', dark: '#ffe169' },
+  { light: '#6d28d9', dark: '#c4a8ff' },
+  { light: '#b8430b', dark: '#ffad70' },
+  { light: '#047857', dark: '#5ee4b5' },
+  { light: '#b31569', dark: '#ff91ca' },
+  { light: '#087186', dark: '#67e8f9' },
 ] as const
 
 function getTagToneStyle(index: number): Record<string, string> {
@@ -45,7 +45,8 @@ const triggerLabel = computed(() => {
     placement="top"
     reference-selector=".node-card"
     constrain-to-reference
-    :width="360"
+    fit-reference-content
+    :reference-width-ratio="0.56"
     as="span"
     class="inline-flex shrink-0"
     content-class="node-tag-tooltip !p-2.5"
@@ -106,15 +107,17 @@ const triggerLabel = computed(() => {
 
 <style scoped>
 .node-tag-chip {
-  border-color: color-mix(in srgb, var(--node-tag-color) 48%, transparent);
-  background: color-mix(in srgb, var(--node-tag-color) 15%, transparent);
+  border-color: color-mix(in srgb, var(--node-tag-color) 62%, transparent);
+  background: color-mix(in srgb, var(--node-tag-color) 20%, transparent);
   color: var(--node-tag-color);
-  box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.09);
+  box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.15);
+  text-shadow: 0 0 10px color-mix(in srgb, var(--node-tag-color) 20%, transparent);
 }
 
 :global(.dark) .node-tag-chip {
-  border-color: color-mix(in srgb, var(--node-tag-color-dark) 54%, transparent);
-  background: color-mix(in srgb, var(--node-tag-color-dark) 18%, transparent);
+  border-color: color-mix(in srgb, var(--node-tag-color-dark) 68%, transparent);
+  background: color-mix(in srgb, var(--node-tag-color-dark) 24%, transparent);
   color: var(--node-tag-color-dark);
+  text-shadow: 0 0 11px color-mix(in srgb, var(--node-tag-color-dark) 34%, transparent);
 }
 </style>

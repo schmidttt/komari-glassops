@@ -24,6 +24,10 @@ interface Props {
   referenceSelector?: string
   /** 将气泡最大宽度限制在定位参照元素以内 */
   constrainToReference?: boolean
+  /** 按定位参照元素宽度计算气泡宽度，例如 0.56 表示卡片宽度的 56% */
+  referenceWidthRatio?: number
+  /** 由内容自然撑开；referenceWidthRatio 此时作为最小宽度，最大不超过定位参照元素 */
+  fitReferenceContent?: boolean
 }
 
 defineOptions({
@@ -51,6 +55,7 @@ const open = ref(false)
 const tooltipX = ref(0)
 const tooltipY = ref(0)
 const referenceMaxWidth = ref<number | null>(null)
+const referenceRatioWidth = ref<number | null>(null)
 const effectivePlacement = ref<DataTooltipPlacement>(props.placement)
 let positionFrame = 0
 let resizeObserver: ResizeObserver | null = null
@@ -68,6 +73,12 @@ const tooltipTransform = computed(() => {
 
 const tooltipStyle = computed(() => ({
   ...sizeStyle.value,
+  ...(props.fitReferenceContent
+    ? {
+        width: 'max-content',
+        ...(referenceRatioWidth.value != null ? { minWidth: `${referenceRatioWidth.value}px` } : {}),
+      }
+    : referenceRatioWidth.value != null ? { width: `${referenceRatioWidth.value}px` } : {}),
   left: `${tooltipX.value}px`,
   top: `${tooltipY.value}px`,
   transform: tooltipTransform.value,
@@ -83,8 +94,9 @@ function getReferenceElement(): HTMLElement | null {
 }
 
 function updateReferenceConstraint() {
-  if (!props.constrainToReference) {
+  if (!props.constrainToReference && props.referenceWidthRatio == null && !props.fitReferenceContent) {
     referenceMaxWidth.value = null
+    referenceRatioWidth.value = null
     return
   }
 
@@ -92,7 +104,11 @@ function updateReferenceConstraint() {
   if (!referenceRect)
     return
   const edgeGap = 10
-  referenceMaxWidth.value = Math.max(0, Math.min(referenceRect.width, window.innerWidth - edgeGap * 2))
+  const availableWidth = Math.max(0, Math.min(referenceRect.width, window.innerWidth - edgeGap * 2))
+  referenceMaxWidth.value = props.constrainToReference ? availableWidth : null
+  referenceRatioWidth.value = props.referenceWidthRatio == null
+    ? null
+    : Math.min(availableWidth, Math.max(0, referenceRect.width * props.referenceWidthRatio))
 }
 
 function updatePosition() {
@@ -231,7 +247,10 @@ onBeforeUnmount(() => {
       role="tooltip"
       :data-placement="effectivePlacement"
       :class="cn(
-        'pointer-events-none fixed z-[340] w-max max-w-[min(22rem,calc(100vw-1.25rem))] whitespace-normal break-words rounded-lg border border-white/10 bg-popover/96 px-2.5 py-2 text-left text-[11px] leading-4 text-popover-foreground shadow-xl backdrop-blur-xl',
+        'pointer-events-none fixed z-[340] w-max whitespace-normal break-words rounded-lg border border-white/10 bg-popover/96 px-2.5 py-2 text-left text-[11px] leading-4 text-popover-foreground shadow-xl backdrop-blur-xl',
+        props.fitReferenceContent
+          ? 'max-w-[calc(100vw-1.25rem)]'
+          : 'max-w-[min(22rem,calc(100vw-1.25rem))]',
         props.contentClass,
       )"
       :style="tooltipStyle"
