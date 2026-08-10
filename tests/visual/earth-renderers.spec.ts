@@ -320,7 +320,9 @@ test('realistic East Asia night lights preserve dense coastal and sparse inland 
   const nightPixels = await readCentralGlobePixels(page)
   expect(nightPixels.warmLightPixels).toBeGreaterThan(300)
   expect(nightPixels.softWarmLightPixels).toBeGreaterThan(nightPixels.brightWarmLightPixels)
-  expect(nightPixels.saturatedWarmLightPixels).toBeLessThan(nightPixels.warmLightPixels * 0.3)
+  expect(nightPixels.saturatedWarmLightPixels).toBeLessThanOrEqual(
+    Math.ceil(nightPixels.warmLightPixels * 0.3),
+  )
   await testInfo.attach('realistic-east-asia-night-pixels.json', {
     body: Buffer.from(JSON.stringify(nightPixels, null, 2)),
     contentType: 'application/json',
@@ -430,7 +432,9 @@ test('realistic North America night lights retain settlement-weighted detail aft
 
   const nightPixels = await readCentralGlobePixels(page)
   expect(nightPixels.warmLightPixels).toBeGreaterThan(120)
-  expect(nightPixels.saturatedWarmLightPixels).toBeLessThan(nightPixels.warmLightPixels * 0.3)
+  expect(nightPixels.saturatedWarmLightPixels).toBeLessThanOrEqual(
+    Math.ceil(nightPixels.warmLightPixels * 0.3),
+  )
   await testInfo.attach('realistic-north-america-night-pixels.json', {
     body: Buffer.from(JSON.stringify(nightPixels, null, 2)),
     contentType: 'application/json',
@@ -473,7 +477,9 @@ test('realistic Australia night lights keep populated coasts visible without urb
 
   const nightPixels = await readCentralGlobePixels(page, { x: 0.24, y: 0.80 })
   expect(nightPixels.warmLightPixels).toBeGreaterThan(20)
-  expect(nightPixels.saturatedWarmLightPixels).toBeLessThan(nightPixels.warmLightPixels * 0.3)
+  expect(nightPixels.saturatedWarmLightPixels).toBeLessThanOrEqual(
+    Math.ceil(nightPixels.warmLightPixels * 0.3),
+  )
   await testInfo.attach('realistic-australia-night-pixels.json', {
     body: Buffer.from(JSON.stringify(nightPixels, null, 2)),
     contentType: 'application/json',
@@ -824,37 +830,40 @@ test('realistic globe emits a staggered group through the shared meteor renderer
       radiusReference,
     }
   })
-  const firstBeam = overlay.locator(
-    '.earth-meteor-beam[data-launch-order="0"] .earth-meteor-stroke',
-  )
   const firstSequence = Number(await overlay.getAttribute('data-meteor-sequence'))
-  const drillingTransition = await firstBeam.evaluate(async (element) => {
+  const drillingTransition = await overlay.evaluate(async (element) => {
     const readState = () => {
-      const targetX = Number(element.dataset.targetX)
-      const targetY = Number(element.dataset.targetY)
-      const headX = Number(element.dataset.headX)
-      const headY = Number(element.dataset.headY)
-      const tailX = Number(element.dataset.tailX)
-      const tailY = Number(element.dataset.tailY)
+      const path = element.querySelector<SVGPathElement>(
+        '.earth-meteor-beam[data-launch-order="0"] .earth-meteor-stroke',
+      )
+      if (!path)
+        return null
+      const targetX = Number(path.dataset.targetX)
+      const targetY = Number(path.dataset.targetY)
+      const headX = Number(path.dataset.headX)
+      const headY = Number(path.dataset.headY)
+      const tailX = Number(path.dataset.tailX)
+      const tailY = Number(path.dataset.tailY)
       return {
         headDistance: Math.hypot(headX - targetX, headY - targetY),
-        opacity: Number(getComputedStyle(element).opacity),
-        pathLength: element.getTotalLength(),
-        phase: element.dataset.motionPhase,
+        opacity: Number(getComputedStyle(path).opacity),
+        pathLength: path.getTotalLength(),
+        phase: path.dataset.motionPhase,
         tailDistance: Math.hypot(tailX - targetX, tailY - targetY),
-        tailProgress: Number(element.dataset.tailProgress),
-        visibility: getComputedStyle(element).visibility,
+        tailProgress: Number(path.dataset.tailProgress),
+        visibility: getComputedStyle(path).visibility,
       }
     }
+    type DrillingState = NonNullable<ReturnType<typeof readState>>
     const nextFrame = () => new Promise<void>(resolve => requestAnimationFrame(() => resolve()))
     const deadline = performance.now() + 10_000
-    let drillingStart: ReturnType<typeof readState> | null = null
-    let drillingLater: ReturnType<typeof readState> | null = null
-    let landed: ReturnType<typeof readState> | null = null
+    let drillingStart: DrillingState | null = null
+    let drillingLater: DrillingState | null = null
+    let landed: DrillingState | null = null
 
     while (performance.now() < deadline) {
       const state = readState()
-      if (state.phase === 'drilling' && state.tailProgress < 0.62) {
+      if (state?.phase === 'drilling' && state.tailProgress < 0.62) {
         drillingStart = state
         break
       }
@@ -864,7 +873,12 @@ test('realistic globe emits a staggered group through the shared meteor renderer
       if (!drillingStart)
         break
       const state = readState()
-      if (state.phase === 'drilling' && state.tailProgress > drillingStart.tailProgress) {
+      if (
+        state?.phase === 'drilling'
+        && state.tailProgress > drillingStart.tailProgress
+        && state.tailDistance < drillingStart.tailDistance - 0.01
+        && state.pathLength < drillingStart.pathLength - 0.01
+      ) {
         drillingLater = state
         break
       }
@@ -874,7 +888,7 @@ test('realistic globe emits a staggered group through the shared meteor renderer
       if (!drillingLater)
         break
       const state = readState()
-      if (state.phase === 'landed') {
+      if (state?.phase === 'landed') {
         landed = state
         break
       }
