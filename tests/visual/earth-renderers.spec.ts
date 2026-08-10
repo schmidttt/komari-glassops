@@ -179,6 +179,7 @@ for (const { renderer, selector, dark, label } of EARTH_RENDERERS) {
 }
 
 test('realistic globe combines a solar terminator, Black Marble lights, and transparent atmosphere', async ({ context }) => {
+  test.slow()
   const darkPage = await context.newPage()
   const lightPage = await context.newPage()
   await Promise.all([
@@ -405,6 +406,7 @@ test('realistic light mode keeps sunlit desert terrain comfortable', async ({ pa
 })
 
 test('realistic North America night lights retain settlement-weighted detail after rotation', async ({ page }, testInfo) => {
+  test.slow()
   await page.setViewportSize({ width: 1280, height: 720 })
   await installKomariFixture(page, {
     dark: true,
@@ -442,6 +444,7 @@ test('realistic North America night lights retain settlement-weighted detail aft
 })
 
 test('realistic Australia night lights keep populated coasts visible without urban bloom', async ({ page }, testInfo) => {
+  test.slow()
   await page.setViewportSize({ width: 1280, height: 720 })
   await installKomariFixture(page, {
     dark: true,
@@ -759,6 +762,7 @@ test('realistic globe diameter is constrained by both viewport width and usable 
 })
 
 test('realistic globe emits a staggered group through the shared meteor renderer', async ({ page }, testInfo) => {
+  test.slow()
   await page.setViewportSize({ width: 1280, height: 720 })
   await installKomariFixture(page, {
     dark: true,
@@ -785,7 +789,7 @@ test('realistic globe emits a staggered group through the shared meteor renderer
   }))
   expect(batchContract.launchOrders).toEqual([0, 1, 2])
   expect(new Set(batchContract.targetIds).size).toBe(1)
-  const longArcGeometry = await overlay.evaluate((element) => {
+  const readLongArcGeometry = () => overlay.evaluate((element) => {
     const rect = element.getBoundingClientRect()
     const radiusReference = Math.min(rect.width, rect.height)
     const paths = Array.from(element.querySelectorAll<SVGPathElement>('.earth-meteor-stroke'))
@@ -820,38 +824,69 @@ test('realistic globe emits a staggered group through the shared meteor renderer
       radiusReference,
     }
   })
-  expect(longArcGeometry.minimumLength).toBeGreaterThan(longArcGeometry.radiusReference * 0.32)
-  expect(longArcGeometry.minimumLength).toBeLessThan(longArcGeometry.radiusReference * 0.76)
-  expect(longArcGeometry.minimumStartDistance).toBeGreaterThan(longArcGeometry.radiusReference * 0.15)
-  expect(new Set(longArcGeometry.approachSides).size).toBeGreaterThanOrEqual(2)
   const firstBeam = overlay.locator(
     '.earth-meteor-beam[data-launch-order="0"] .earth-meteor-stroke',
   )
-  const readDrillingState = () => firstBeam.evaluate((element) => {
-    const targetX = Number(element.dataset.targetX)
-    const targetY = Number(element.dataset.targetY)
-    const headX = Number(element.dataset.headX)
-    const headY = Number(element.dataset.headY)
-    const tailX = Number(element.dataset.tailX)
-    const tailY = Number(element.dataset.tailY)
-    return {
-      headDistance: Math.hypot(headX - targetX, headY - targetY),
-      opacity: Number(getComputedStyle(element).opacity),
-      pathLength: element.getTotalLength(),
-      phase: element.dataset.motionPhase,
-      tailDistance: Math.hypot(tailX - targetX, tailY - targetY),
-      tailProgress: Number(element.dataset.tailProgress),
-      visibility: getComputedStyle(element).visibility,
+  const firstSequence = Number(await overlay.getAttribute('data-meteor-sequence'))
+  const drillingTransition = await firstBeam.evaluate(async (element) => {
+    const readState = () => {
+      const targetX = Number(element.dataset.targetX)
+      const targetY = Number(element.dataset.targetY)
+      const headX = Number(element.dataset.headX)
+      const headY = Number(element.dataset.headY)
+      const tailX = Number(element.dataset.tailX)
+      const tailY = Number(element.dataset.tailY)
+      return {
+        headDistance: Math.hypot(headX - targetX, headY - targetY),
+        opacity: Number(getComputedStyle(element).opacity),
+        pathLength: element.getTotalLength(),
+        phase: element.dataset.motionPhase,
+        tailDistance: Math.hypot(tailX - targetX, tailY - targetY),
+        tailProgress: Number(element.dataset.tailProgress),
+        visibility: getComputedStyle(element).visibility,
+      }
     }
+    const nextFrame = () => new Promise<void>(resolve => requestAnimationFrame(() => resolve()))
+    const deadline = performance.now() + 10_000
+    let drillingStart: ReturnType<typeof readState> | null = null
+    let drillingLater: ReturnType<typeof readState> | null = null
+    let landed: ReturnType<typeof readState> | null = null
+
+    while (performance.now() < deadline) {
+      const state = readState()
+      if (state.phase === 'drilling' && state.tailProgress < 0.62) {
+        drillingStart = state
+        break
+      }
+      await nextFrame()
+    }
+    while (performance.now() < deadline) {
+      if (!drillingStart)
+        break
+      const state = readState()
+      if (state.phase === 'drilling' && state.tailProgress > drillingStart.tailProgress) {
+        drillingLater = state
+        break
+      }
+      await nextFrame()
+    }
+    while (performance.now() < deadline) {
+      if (!drillingLater)
+        break
+      const state = readState()
+      if (state.phase === 'landed') {
+        landed = state
+        break
+      }
+      await nextFrame()
+    }
+
+    return { drillingLater, drillingStart, landed }
   })
-  await expect.poll(
-    async () => {
-      const state = await readDrillingState()
-      return state.phase === 'drilling' && state.tailProgress < 0.62
-    },
-    { intervals: [40], timeout: 4_500 },
-  ).toBe(true)
-  const drillingStart = await readDrillingState()
+  expect(drillingTransition.drillingStart).not.toBeNull()
+  expect(drillingTransition.drillingLater).not.toBeNull()
+  expect(drillingTransition.landed).not.toBeNull()
+  const drillingStart = drillingTransition.drillingStart!
   expect(drillingStart.phase).toBe('drilling')
   expect(drillingStart.headDistance).toBeLessThanOrEqual(0.2)
   expect(drillingStart.tailDistance).toBeGreaterThan(8)
@@ -859,8 +894,7 @@ test('realistic globe emits a staggered group through the shared meteor renderer
   expect(drillingStart.opacity).toBeGreaterThan(0.95)
   expect(drillingStart.visibility).toBe('visible')
 
-  await page.waitForTimeout(240)
-  const drillingLater = await readDrillingState()
+  const drillingLater = drillingTransition.drillingLater!
   expect(drillingLater.phase).toBe('drilling')
   expect(drillingLater.headDistance).toBeLessThanOrEqual(0.2)
   expect(drillingLater.tailProgress).toBeGreaterThan(drillingStart.tailProgress)
@@ -868,27 +902,32 @@ test('realistic globe emits a staggered group through the shared meteor renderer
   expect(drillingLater.pathLength).toBeLessThan(drillingStart.pathLength)
   expect(drillingLater.visibility).toBe('visible')
 
-  await expect.poll(
-    () => firstBeam.getAttribute('data-motion-phase'),
-    { timeout: 1_500 },
-  ).toBe('landed')
-  const landed = await firstBeam.evaluate(element => ({
-    headDistance: Math.hypot(
-      Number(element.dataset.headX) - Number(element.dataset.targetX),
-      Number(element.dataset.headY) - Number(element.dataset.targetY),
-    ),
-    tailDistance: Math.hypot(
-      Number(element.dataset.tailX) - Number(element.dataset.targetX),
-      Number(element.dataset.tailY) - Number(element.dataset.targetY),
-    ),
-    visibility: getComputedStyle(element).visibility,
-  }))
+  const landed = drillingTransition.landed!
   expect(landed.headDistance).toBeLessThanOrEqual(0.2)
   expect(landed.tailDistance).toBeLessThanOrEqual(0.2)
   expect(landed.visibility).toBe('hidden')
-  const firstSequence = Number(await overlay.getAttribute('data-meteor-sequence'))
+
+  const longArcSamples: Awaited<ReturnType<typeof readLongArcGeometry>>[] = []
+  await expect.poll(async () => {
+    const geometry = await readLongArcGeometry()
+    if (
+      Number.isFinite(geometry.minimumLength)
+      && Number.isFinite(geometry.minimumStartDistance)
+      && geometry.approachSides.length === 3
+    ) {
+      longArcSamples.push(geometry)
+      return true
+    }
+    return false
+  }, { intervals: [40], timeout: 10_000 }).toBe(true)
+  const longArcGeometry = longArcSamples.at(-1)!
+  expect(longArcGeometry.minimumLength).toBeGreaterThan(longArcGeometry.radiusReference * 0.32)
+  expect(longArcGeometry.minimumLength).toBeLessThan(longArcGeometry.radiusReference * 0.76)
+  expect(longArcGeometry.minimumStartDistance).toBeGreaterThan(longArcGeometry.radiusReference * 0.15)
+  expect(new Set(longArcGeometry.approachSides).size).toBeGreaterThanOrEqual(2)
+
   await expect.poll(async () => Number(await overlay.getAttribute('data-meteor-sequence')), {
-    timeout: 6_800,
+    timeout: 12_000,
   }).toBeGreaterThan(firstSequence)
   await expect(overlay).toHaveAttribute('data-meteor-count', '3')
   await page.waitForTimeout(1_200)

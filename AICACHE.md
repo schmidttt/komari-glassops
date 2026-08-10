@@ -1001,3 +1001,10 @@
 - 主题清单、README、CHANGELOG、预览源、1600×900 的 `preview.png` / `preview-v1.0.7.png` 和 `docs/release-v1.0.7.md` 已统一到 `1.0.7`。发布工作流继续由 `main` 上版本变化触发，在 GitHub Actions 中重新执行类型、ESLint、Chromium Playwright 与构建，再创建 `v1.0.7` 标签和 Release。
 - 发布前最终本地验证：ESLint（无 `--fix`，排除既有未跟踪交接文件）、`vue-tsc --build`、Vite production build、`git diff --check` 和 Playwright 94/94 均通过；预览图两份 SHA-256 一致。正式发布包需在提交后以干净提交 SHA 重新构建并校验，远端标签、Release、资产与 Actions 状态仍须在推送后复核。
 - 外部验收边界不变：本地 Chromium/WebGL 与自动化不能替代真实 Komari 覆盖导入、设置保存/重开、硬刷新，以及 Safari/真实 GPU 长时间旋转和流星叠加验证。
+
+## 2026-08-11 v1.0.7 GitHub CI 慢速运行器时序收稳（M6）
+
+- 首个发布提交 `68ccfde` 已推送到 `main`，但独立 Visual Regression（run `31411607031`）与 Release On Version Bump（run `31411610715`）均在 Ubuntu GitHub runner 上失败，未创建 `v1.0.7` 标签或 Release。通过已认证 GitHub 连接读取的日志确认，前者为 92/94、后者为 90/94；共同失败均集中在 realistic 高成本截图和短暂流星动画阶段。
+- 三个截图用例的像素与几何断言没有失败，均是在最新 globe/WebGL 渲染较慢的 CI 上耗尽 Playwright 默认 30 秒总时限；为这三项标记 `test.slow()`，只把总预算提高到 Playwright 慢速用例标准，不改变任何视觉阈值。浅色海面与沙漠测试虽在 CI 接近 30 秒但已通过，保持原契约不动。
+- 流星失败来自宿主机命令往返期间错过约数百毫秒的 drilling 阶段，且批次在几何读取时可能恰好处于空冷却。测试改为在浏览器页面自身的 `requestAnimationFrame` 循环里原子捕获 drilling 起点、后续收尾和 landed 三态；长弧几何独立等待下一组有效三路径后仍按原比例断言。产品动画时长、路径、遮挡和渲染代码未修改，像素、亮度、几何与交互阈值均未放宽。
+- 修正后四个受影响用例各重复 3 次共 12/12 通过，随后完整 Playwright 94/94 通过（2.4 分钟）；ESLint、Vue 类型检查与 `git diff --check` 同步通过。需将本节与测试修正作为补充提交推送，然后等待新 Visual Regression 成功，再从最新 `main` 手动触发仓库既有 `workflow_dispatch` 发布入口，确保标签和正式 ZIP 指向包含 CI 修正的最终提交。
