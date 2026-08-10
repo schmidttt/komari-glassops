@@ -33,11 +33,13 @@ const NODE_GEO_FIXTURES = [
 ] as const
 
 export interface VisualFixtureOptions {
+  fixedNow?: string
   dark?: boolean
   earthRenderer?: 'cobe' | 'realistic' | 'tiled'
   colorVisionFriendly?: boolean
   viewMode?: 'card' | 'list'
   nodeCardSize?: 'mini' | 'compact' | 'comfortable' | 'large'
+  nodeLimit?: number
   hideEarth?: boolean
   hideGeneralCard?: boolean
   visitorInfoEnabled?: boolean
@@ -283,16 +285,21 @@ function jsonRpcResult(id: unknown, result: unknown) {
 async function handleRpc(route: Route, options: VisualFixtureOptions = {}): Promise<void> {
   const payload = route.request().postDataJSON() as { id: unknown, method: string, params?: Record<string, unknown> }
   const uuid = typeof payload.params?.uuid === 'string' ? payload.params.uuid : uuidFor(0)
+  const requestedNodeLimit = Math.max(1, Math.min(12, options.nodeLimit ?? 12))
+  const limitedClients = Object.fromEntries(Object.entries(clients).slice(0, requestedNodeLimit))
   const fixtureClients = options.firstNodeTags === undefined && options.firstNodeTrafficLimit === undefined
-    ? clients
+    ? limitedClients
     : {
-        ...clients,
+        ...limitedClients,
         [uuidFor(0)]: {
-          ...clients[uuidFor(0)],
+          ...limitedClients[uuidFor(0)],
           tags: options.firstNodeTags ?? clients[uuidFor(0)].tags,
           traffic_limit: options.firstNodeTrafficLimit ?? clients[uuidFor(0)].traffic_limit,
         },
       }
+  const fixtureStatuses = Object.fromEntries(
+    Object.entries(statuses).filter(([nodeUuid]) => nodeUuid in fixtureClients),
+  )
   const pingRecords = Array.from({ length: 48 }, (_, index) => ({
     task_id: 1,
     client: uuid,
@@ -318,7 +325,7 @@ async function handleRpc(route: Route, options: VisualFixtureOptions = {}): Prom
       result = fixtureClients
       break
     case 'common:getNodesLatestStatus':
-      result = statuses
+      result = fixtureStatuses
       break
     case 'common:getNodeRecentStatus':
       result = { count: 48, records: buildRecords(uuid) }
@@ -447,7 +454,7 @@ export async function installKomariFixture(page: Page, options: VisualFixtureOpt
       }
     }
     window.Date = FixedDate as DateConstructor
-  }, { fixedNow: FIXED_NOW })
+  }, { fixedNow: options.fixedNow ?? FIXED_NOW })
 
   await page.route('**/api/public', route => route.fulfill({
     contentType: 'application/json',

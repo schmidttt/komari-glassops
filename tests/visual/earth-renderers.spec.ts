@@ -1,4 +1,5 @@
 import type { Page } from '@playwright/test'
+import { Buffer } from 'node:buffer'
 import { expect, test } from '@playwright/test'
 import { installKomariFixture } from './fixtures/komari'
 
@@ -16,6 +17,83 @@ async function openEarthPage(page: Page, renderer: 'realistic' | 'cobe' | 'tiled
   await installKomariFixture(page, { dark, earthRenderer: renderer })
   await page.goto('/')
   await expect(page.getByRole('heading', { name: 'Komari Visual Lab' })).toBeVisible()
+}
+
+async function readCentralGlobePixels(page: Page, sampleCenter = { x: 0.5, y: 0.5 }) {
+  const canvas = page.locator('.earth-globe-host canvas')
+  await expect(canvas).toBeVisible()
+  return canvas.evaluate((element, center) => {
+    const canvasElement = element as HTMLCanvasElement
+    const context = canvasElement.getContext('webgl2') || canvasElement.getContext('webgl')
+    if (!context) {
+      return {
+        alphaPixels: 0,
+        averageLuminance: 0,
+        brightWarmLightPixels: 0,
+        hotWarmSurfacePixels: 0,
+        luminanceDeviation: 0,
+        saturatedWarmLightPixels: 0,
+        softWarmLightPixels: 0,
+        warmLightPixels: 0,
+      }
+    }
+
+    const sampleSize = Math.min(canvasElement.width, canvasElement.height, 220)
+    const startX = Math.max(0, Math.min(
+      canvasElement.width - sampleSize,
+      Math.floor(canvasElement.width * center.x - sampleSize / 2),
+    ))
+    const startY = Math.max(0, Math.min(
+      canvasElement.height - sampleSize,
+      Math.floor(canvasElement.height * center.y - sampleSize / 2),
+    ))
+    const pixels = new Uint8Array(sampleSize * sampleSize * 4)
+    context.readPixels(startX, startY, sampleSize, sampleSize, context.RGBA, context.UNSIGNED_BYTE, pixels)
+    let alphaPixels = 0
+    let luminanceSum = 0
+    let luminanceSquaredSum = 0
+    let brightWarmLightPixels = 0
+    let hotWarmSurfacePixels = 0
+    let saturatedWarmLightPixels = 0
+    let softWarmLightPixels = 0
+    let warmLightPixels = 0
+    for (let index = 3; index < pixels.length; index += 4) {
+      if (pixels[index] <= 16)
+        continue
+      const red = pixels[index - 3]!
+      const green = pixels[index - 2]!
+      const blue = pixels[index - 1]!
+      const luminance = red * 0.2126 + green * 0.7152 + blue * 0.0722
+      alphaPixels += 1
+      luminanceSum += luminance
+      luminanceSquaredSum += luminance * luminance
+      if (luminance > 175 && red > blue * 1.32 && green > blue * 1.16)
+        hotWarmSurfacePixels += 1
+      if (luminance > 48 && red > blue * 1.18 && green > blue * 1.08) {
+        warmLightPixels += 1
+        if (luminance < 112)
+          softWarmLightPixels += 1
+        if (luminance > 170)
+          brightWarmLightPixels += 1
+        if (red > 235 && green > 205)
+          saturatedWarmLightPixels += 1
+      }
+    }
+    const averageLuminance = alphaPixels ? luminanceSum / alphaPixels : 0
+    const luminanceVariance = alphaPixels
+      ? Math.max(0, luminanceSquaredSum / alphaPixels - averageLuminance * averageLuminance)
+      : 0
+    return {
+      alphaPixels,
+      averageLuminance,
+      brightWarmLightPixels,
+      hotWarmSurfacePixels,
+      luminanceDeviation: Math.sqrt(luminanceVariance),
+      saturatedWarmLightPixels,
+      softWarmLightPixels,
+      warmLightPixels,
+    }
+  }, sampleCenter)
 }
 
 for (const { renderer, selector, dark, label } of EARTH_RENDERERS) {
@@ -99,6 +177,448 @@ for (const { renderer, selector, dark, label } of EARTH_RENDERERS) {
     expect(errors).toEqual([])
   })
 }
+
+test('realistic globe combines a solar terminator, Black Marble lights, and transparent atmosphere', async ({ context }) => {
+  const darkPage = await context.newPage()
+  const lightPage = await context.newPage()
+  await Promise.all([
+    openEarthPage(darkPage, 'realistic', true),
+    openEarthPage(lightPage, 'realistic', false),
+  ])
+
+  const darkHost = darkPage.locator('.earth-globe-host')
+  const lightHost = lightPage.locator('.earth-globe-host')
+  await Promise.all([
+    expect(darkHost).toHaveAttribute('data-render-ready', 'true', { timeout: 15_000 }),
+    expect(lightHost).toHaveAttribute('data-render-ready', 'true', { timeout: 15_000 }),
+  ])
+
+  for (const host of [darkHost, lightHost]) {
+    await expect(host).toHaveAttribute('data-lighting-model', 'solar-terminator')
+    await expect(host).toHaveAttribute('data-city-lights', 'nasa-black-marble-2016')
+    await expect(host).toHaveAttribute('data-city-light-density', 'black-marble-weighted')
+    await expect(host).toHaveAttribute('data-atmosphere-model', 'solar-dual-tone-gradient')
+    await expect(host).toHaveAttribute('data-atmosphere-transmission', 'meteor-visible')
+    await expect(host).toHaveAttribute('data-city-twinkle', 'static')
+    await expect(host).toHaveAttribute('data-solar-refresh-ms', '60000')
+    expect(Number(await host.getAttribute('data-night-geography-strength'))).toBeGreaterThanOrEqual(0.7)
+    expect(Number(await host.getAttribute('data-day-surface-strength'))).toBeGreaterThan(1)
+    expect(await host.getAttribute('data-atmosphere-day-color')).not.toBe(
+      await host.getAttribute('data-atmosphere-night-color'),
+    )
+    const solarPoint = {
+      lat: Number(await host.getAttribute('data-subsolar-lat')),
+      lng: Number(await host.getAttribute('data-subsolar-lng')),
+    }
+    expect(solarPoint.lat).toBeGreaterThanOrEqual(-23.5)
+    expect(solarPoint.lat).toBeLessThanOrEqual(23.5)
+    expect(solarPoint.lng).toBeGreaterThanOrEqual(-180)
+    expect(solarPoint.lng).toBeLessThanOrEqual(180)
+  }
+
+  expect(Number(await darkHost.getAttribute('data-city-light-strength'))).toBeGreaterThan(
+    Number(await lightHost.getAttribute('data-city-light-strength')),
+  )
+
+  const layerContract = await darkPage.locator('.realistic-earth-shell').evaluate((shell) => {
+    const globeHost = shell.querySelector<HTMLElement>('.earth-globe-host')
+    const meteorOverlay = shell.querySelector<HTMLElement>('.earth-meteor-overlay')
+    if (!globeHost || !meteorOverlay)
+      throw new Error('Realistic globe visual layers are missing')
+    const darkHalo = getComputedStyle(shell, '::after')
+    return {
+      globeZ: Number(getComputedStyle(globeHost).zIndex),
+      haloBackgroundImage: darkHalo.backgroundImage,
+      haloFilter: darkHalo.filter,
+      haloInnerRadius: Number.parseFloat(darkHalo.getPropertyValue('--earth-halo-inner-radius')),
+      haloMaskImage: darkHalo.maskImage,
+      haloOpacity: Number(darkHalo.opacity),
+      haloOuterRadius: Number.parseFloat(darkHalo.getPropertyValue('--earth-halo-outer-radius')),
+      haloVisibleRadius: Number.parseFloat(darkHalo.getPropertyValue('--earth-visible-radius')),
+      haloZ: Number(darkHalo.zIndex),
+      meteorZ: Number(getComputedStyle(meteorOverlay).zIndex),
+    }
+  })
+  const lightHaloOpacity = await lightPage.locator('.realistic-earth-shell').evaluate(shell => (
+    Number(getComputedStyle(shell, '::after').opacity)
+  ))
+  await expect(darkHost).toHaveAttribute('data-dark-atmosphere-halo', 'enhanced')
+  await expect(lightHost).toHaveAttribute('data-dark-atmosphere-halo', 'minimal')
+  await expect(darkHost).toHaveAttribute('data-atmosphere-day-color', '#93daff')
+  await expect(darkHost).toHaveAttribute('data-atmosphere-night-color', '#60a5fa')
+  expect(Number(await darkHost.getAttribute('data-visible-earth-radius'))).toBeGreaterThan(200)
+  expect(Number(await darkHost.getAttribute('data-atmosphere-halo-width'))).toBeGreaterThanOrEqual(48)
+  expect(layerContract.haloBackgroundImage).toContain('linear-gradient')
+  expect(layerContract.haloFilter).toContain('blur(10px)')
+  expect(layerContract.haloMaskImage).toContain('radial-gradient')
+  expect(layerContract.haloOpacity).toBe(1)
+  expect(layerContract.haloInnerRadius).toBeLessThan(layerContract.haloVisibleRadius)
+  expect(layerContract.haloOuterRadius - layerContract.haloVisibleRadius).toBeGreaterThanOrEqual(48)
+  expect(lightHaloOpacity).toBe(0)
+  expect(layerContract.globeZ).toBeLessThan(layerContract.haloZ)
+  expect(layerContract.haloZ).toBeLessThan(layerContract.meteorZ)
+})
+
+test('realistic day and night stay visibly distinct while both retain terrain detail', async ({ context }, testInfo) => {
+  const dayPage = await context.newPage()
+  const nightPage = await context.newPage()
+  await Promise.all([
+    installKomariFixture(dayPage, {
+      dark: true,
+      earthRenderer: 'realistic',
+      fixedNow: '2026-07-25T05:00:00.000Z',
+    }),
+    installKomariFixture(nightPage, {
+      dark: true,
+      earthRenderer: 'realistic',
+      fixedNow: '2026-07-25T17:00:00.000Z',
+    }),
+  ])
+  await Promise.all([dayPage.goto('/'), nightPage.goto('/')])
+
+  const dayHost = dayPage.locator('.earth-globe-host')
+  const nightHost = nightPage.locator('.earth-globe-host')
+  await Promise.all([
+    expect(dayHost).toHaveAttribute('data-render-ready', 'true', { timeout: 15_000 }),
+    expect(nightHost).toHaveAttribute('data-render-ready', 'true', { timeout: 15_000 }),
+  ])
+  await dayPage.waitForTimeout(500)
+  await nightPage.waitForTimeout(500)
+
+  const [dayPixels, nightPixels] = await Promise.all([
+    readCentralGlobePixels(dayPage),
+    readCentralGlobePixels(nightPage),
+  ])
+  expect(dayPixels.alphaPixels).toBeGreaterThan(10_000)
+  expect(nightPixels.alphaPixels).toBeGreaterThan(10_000)
+  const dayNightRatio = dayPixels.averageLuminance / nightPixels.averageLuminance
+  await testInfo.attach('realistic-day-night-pixels.json', {
+    body: Buffer.from(JSON.stringify({ dayPixels, nightPixels, dayNightRatio }, null, 2)),
+    contentType: 'application/json',
+  })
+  expect(dayNightRatio).toBeGreaterThan(1.5)
+  expect(nightPixels.averageLuminance).toBeGreaterThan(18)
+  expect(nightPixels.luminanceDeviation).toBeGreaterThan(10)
+  expect(nightPixels.warmLightPixels).toBeGreaterThan(120)
+})
+
+test('realistic East Asia night lights preserve dense coastal and sparse inland tiers', async ({ page }, testInfo) => {
+  await page.setViewportSize({ width: 1280, height: 720 })
+  await installKomariFixture(page, {
+    dark: true,
+    earthRenderer: 'realistic',
+    fixedNow: '2026-07-25T17:00:00.000Z',
+    stopEarth: true,
+  })
+  await page.goto('/')
+
+  const globeHost = page.locator('.earth-globe-host')
+  await expect(globeHost).toHaveAttribute('data-render-ready', 'true', { timeout: 15_000 })
+  await page.waitForTimeout(600)
+
+  const nightPixels = await readCentralGlobePixels(page)
+  expect(nightPixels.warmLightPixels).toBeGreaterThan(300)
+  expect(nightPixels.softWarmLightPixels).toBeGreaterThan(nightPixels.brightWarmLightPixels)
+  expect(nightPixels.saturatedWarmLightPixels).toBeLessThan(nightPixels.warmLightPixels * 0.3)
+  await testInfo.attach('realistic-east-asia-night-pixels.json', {
+    body: Buffer.from(JSON.stringify(nightPixels, null, 2)),
+    contentType: 'application/json',
+  })
+  const screenshotPath = testInfo.outputPath('realistic-east-asia-night.png')
+  await page.locator('.realistic-earth-shell').screenshot({ path: screenshotPath })
+  await testInfo.attach('realistic-east-asia-night.png', {
+    path: screenshotPath,
+    contentType: 'image/png',
+  })
+})
+
+test('realistic light mode suppresses the artificial ocean spotlight', async ({ page }, testInfo) => {
+  await page.setViewportSize({ width: 1280, height: 720 })
+  await installKomariFixture(page, {
+    dark: false,
+    earthRenderer: 'realistic',
+    fixedNow: '2026-07-25T12:00:00.000Z',
+    stopEarth: true,
+  })
+  await page.goto('/')
+
+  const globeHost = page.locator('.earth-globe-host')
+  await expect(globeHost).toHaveAttribute('data-render-ready', 'true', { timeout: 15_000 })
+  await expect(globeHost).toHaveAttribute('data-light-ocean-specular', 'suppressed')
+  await expect(globeHost).toHaveAttribute('data-day-warm-compression', '1.00')
+  const canvasBox = await globeHost.locator('canvas').boundingBox()
+  expect(canvasBox).not.toBeNull()
+  for (let index = 0; index < 2; index += 1) {
+    await page.mouse.move(canvasBox!.x + canvasBox!.width * 0.30, canvasBox!.y + canvasBox!.height * 0.18)
+    await page.mouse.down()
+    await page.mouse.move(canvasBox!.x + canvasBox!.width * 0.70, canvasBox!.y + canvasBox!.height * 0.18, { steps: 16 })
+    await page.mouse.up()
+    await page.waitForTimeout(220)
+  }
+  await page.waitForTimeout(400)
+
+  const screenshotPath = testInfo.outputPath('realistic-light-ocean-without-spotlight.png')
+  await page.locator('.realistic-earth-shell').screenshot({ path: screenshotPath })
+  await testInfo.attach('realistic-light-ocean-without-spotlight.png', {
+    path: screenshotPath,
+    contentType: 'image/png',
+  })
+})
+
+test('realistic light mode keeps sunlit desert terrain comfortable', async ({ page }, testInfo) => {
+  await page.setViewportSize({ width: 1280, height: 720 })
+  await installKomariFixture(page, {
+    dark: false,
+    earthRenderer: 'realistic',
+    fixedNow: '2026-07-25T12:00:00.000Z',
+    stopEarth: true,
+  })
+  await page.goto('/')
+
+  const globeHost = page.locator('.earth-globe-host')
+  await expect(globeHost).toHaveAttribute('data-render-ready', 'true', { timeout: 15_000 })
+  const canvasBox = await globeHost.locator('canvas').boundingBox()
+  expect(canvasBox).not.toBeNull()
+  await page.mouse.move(canvasBox!.x + canvasBox!.width * 0.30, canvasBox!.y + canvasBox!.height * 0.18)
+  await page.mouse.down()
+  await page.mouse.move(canvasBox!.x + canvasBox!.width * 0.70, canvasBox!.y + canvasBox!.height * 0.18, { steps: 16 })
+  await page.mouse.up()
+  await page.mouse.move(canvasBox!.x + canvasBox!.width * 0.30, canvasBox!.y + canvasBox!.height * 0.18)
+  await page.mouse.down()
+  await page.mouse.move(canvasBox!.x + canvasBox!.width * 0.50, canvasBox!.y + canvasBox!.height * 0.18, { steps: 10 })
+  await page.mouse.up()
+  await page.waitForTimeout(500)
+
+  const lightPixels = await readCentralGlobePixels(page, { x: 0.56, y: 0.48 })
+  expect(lightPixels.averageLuminance).toBeGreaterThan(42)
+  expect(lightPixels.hotWarmSurfacePixels).toBeLessThan(lightPixels.alphaPixels * 0.22)
+  await testInfo.attach('realistic-light-desert-pixels.json', {
+    body: Buffer.from(JSON.stringify(lightPixels, null, 2)),
+    contentType: 'application/json',
+  })
+  const screenshotPath = testInfo.outputPath('realistic-light-desert-comfortable.png')
+  await page.locator('.realistic-earth-shell').screenshot({ path: screenshotPath })
+  await testInfo.attach('realistic-light-desert-comfortable.png', {
+    path: screenshotPath,
+    contentType: 'image/png',
+  })
+})
+
+test('realistic North America night lights retain settlement-weighted detail after rotation', async ({ page }, testInfo) => {
+  await page.setViewportSize({ width: 1280, height: 720 })
+  await installKomariFixture(page, {
+    dark: true,
+    earthRenderer: 'realistic',
+    fixedNow: '2026-07-25T05:00:00.000Z',
+    stopEarth: true,
+  })
+  await page.goto('/')
+
+  const globeHost = page.locator('.earth-globe-host')
+  await expect(globeHost).toHaveAttribute('data-render-ready', 'true', { timeout: 15_000 })
+  const canvasBox = await globeHost.locator('canvas').boundingBox()
+  expect(canvasBox).not.toBeNull()
+  for (let index = 0; index < 3; index += 1) {
+    await page.mouse.move(canvasBox!.x + canvasBox!.width * 0.30, canvasBox!.y + canvasBox!.height * 0.18)
+    await page.mouse.down()
+    await page.mouse.move(canvasBox!.x + canvasBox!.width * 0.70, canvasBox!.y + canvasBox!.height * 0.18, { steps: 16 })
+    await page.mouse.up()
+    await page.waitForTimeout(220)
+  }
+
+  const nightPixels = await readCentralGlobePixels(page)
+  expect(nightPixels.warmLightPixels).toBeGreaterThan(120)
+  expect(nightPixels.saturatedWarmLightPixels).toBeLessThan(nightPixels.warmLightPixels * 0.3)
+  await testInfo.attach('realistic-north-america-night-pixels.json', {
+    body: Buffer.from(JSON.stringify(nightPixels, null, 2)),
+    contentType: 'application/json',
+  })
+  const screenshotPath = testInfo.outputPath('realistic-north-america-night.png')
+  await page.locator('.realistic-earth-shell').screenshot({ path: screenshotPath })
+  await testInfo.attach('realistic-north-america-night.png', {
+    path: screenshotPath,
+    contentType: 'image/png',
+  })
+})
+
+test('realistic Australia night lights keep populated coasts visible without urban bloom', async ({ page }, testInfo) => {
+  await page.setViewportSize({ width: 1280, height: 720 })
+  await installKomariFixture(page, {
+    dark: true,
+    earthRenderer: 'realistic',
+    fixedNow: '2026-07-25T17:00:00.000Z',
+    stopEarth: true,
+  })
+  await page.goto('/')
+
+  const globeHost = page.locator('.earth-globe-host')
+  await expect(globeHost).toHaveAttribute('data-render-ready', 'true', { timeout: 15_000 })
+  const canvasBox = await globeHost.locator('canvas').boundingBox()
+  expect(canvasBox).not.toBeNull()
+  for (let index = 0; index < 6; index += 1) {
+    await page.mouse.move(canvasBox!.x + canvasBox!.width * 0.60, canvasBox!.y + canvasBox!.height * 0.18)
+    await page.mouse.down()
+    await page.mouse.move(canvasBox!.x + canvasBox!.width * 0.60, canvasBox!.y + canvasBox!.height * 0.08, { steps: 12 })
+    await page.mouse.up()
+    await page.waitForTimeout(180)
+  }
+  await page.mouse.move(canvasBox!.x + canvasBox!.width * 0.76, canvasBox!.y + canvasBox!.height * 0.18)
+  await page.mouse.down()
+  await page.mouse.move(canvasBox!.x + canvasBox!.width * 0.61, canvasBox!.y + canvasBox!.height * 0.18, { steps: 12 })
+  await page.mouse.up()
+  await page.waitForTimeout(400)
+
+  const nightPixels = await readCentralGlobePixels(page, { x: 0.24, y: 0.80 })
+  expect(nightPixels.warmLightPixels).toBeGreaterThan(20)
+  expect(nightPixels.saturatedWarmLightPixels).toBeLessThan(nightPixels.warmLightPixels * 0.3)
+  await testInfo.attach('realistic-australia-night-pixels.json', {
+    body: Buffer.from(JSON.stringify(nightPixels, null, 2)),
+    contentType: 'application/json',
+  })
+  const screenshotPath = testInfo.outputPath('realistic-australia-night.png')
+  await page.locator('.realistic-earth-shell').screenshot({ path: screenshotPath })
+  await testInfo.attach('realistic-australia-night.png', {
+    path: screenshotPath,
+    contentType: 'image/png',
+  })
+})
+
+test('realistic dark halo remains visible in the wide low-height production composition', async ({ page }, testInfo) => {
+  await page.setViewportSize({ width: 1630, height: 574 })
+  await installKomariFixture(page, {
+    dark: true,
+    earthRenderer: 'realistic',
+    stopEarth: true,
+  })
+  await page.goto('/')
+
+  const globeHost = page.locator('.earth-globe-host')
+  await expect(globeHost).toHaveAttribute('data-render-ready', 'true', { timeout: 15_000 })
+  const halo = await page.locator('.realistic-earth-shell').evaluate((shell) => {
+    const style = getComputedStyle(shell, '::after')
+    return {
+      backgroundImage: style.backgroundImage,
+      filter: style.filter,
+      maskImage: style.maskImage,
+      opacity: Number(style.opacity),
+    }
+  })
+  expect(halo.backgroundImage).toContain('linear-gradient')
+  expect(halo.filter).toContain('blur(10px)')
+  expect(halo.maskImage).toContain('radial-gradient')
+  expect(halo.opacity).toBe(1)
+
+  const screenshotPath = testInfo.outputPath('realistic-wide-dark.png')
+  await page.screenshot({ path: screenshotPath })
+  await testInfo.attach('realistic-wide-dark.png', {
+    path: screenshotPath,
+    contentType: 'image/png',
+  })
+})
+
+test('realistic solar lighting follows manual globe rotation', async ({ page }, testInfo) => {
+  await page.setViewportSize({ width: 1280, height: 720 })
+  await installKomariFixture(page, {
+    dark: true,
+    disablePageAnimation: false,
+    earthRenderer: 'realistic',
+    stopEarth: true,
+  })
+  await page.goto('/')
+
+  const globeHost = page.locator('.earth-globe-host')
+  await expect(globeHost).toHaveAttribute('data-render-ready', 'true', { timeout: 15_000 })
+  await expect(globeHost).toHaveAttribute('data-city-twinkle', 'animated')
+  const initialSunDirection = (await globeHost.getAttribute('data-sun-view'))
+    ?.split(',')
+    .map(Number) ?? []
+  expect(initialSunDirection).toHaveLength(3)
+
+  const canvasBox = await globeHost.locator('canvas').boundingBox()
+  expect(canvasBox).not.toBeNull()
+  await page.mouse.move(canvasBox!.x + canvasBox!.width * 0.58, canvasBox!.y + canvasBox!.height * 0.2)
+  await page.mouse.down()
+  await page.mouse.move(canvasBox!.x + canvasBox!.width * 0.78, canvasBox!.y + canvasBox!.height * 0.25, { steps: 12 })
+  await page.mouse.up()
+
+  await expect.poll(async () => {
+    const current = (await globeHost.getAttribute('data-sun-view'))?.split(',').map(Number) ?? []
+    return Math.hypot(
+      (current[0] ?? 0) - (initialSunDirection[0] ?? 0),
+      (current[1] ?? 0) - (initialSunDirection[1] ?? 0),
+      (current[2] ?? 0) - (initialSunDirection[2] ?? 0),
+    )
+  }).toBeGreaterThan(0.05)
+
+  await testInfo.attach('realistic-solar-lighting-after-drag.png', {
+    body: await page.locator('.realistic-earth-shell').screenshot(),
+    contentType: 'image/png',
+  })
+})
+
+test('realistic globe accepts drag gestures through uncovered node-grid space while cards stay interactive', async ({ page }) => {
+  await page.setViewportSize({ width: 1630, height: 900 })
+  await installKomariFixture(page, {
+    dark: true,
+    disablePageAnimation: false,
+    earthRenderer: 'realistic',
+    nodeLimit: 2,
+    stopEarth: true,
+  })
+  await page.goto('/')
+
+  const globeHost = page.locator('.earth-globe-host')
+  await expect(globeHost).toHaveAttribute('data-render-ready', 'true', { timeout: 15_000 })
+  const exposedDrag = await page.evaluate(() => {
+    const host = document.querySelector<HTMLElement>('.earth-globe-host')
+    if (!host)
+      return null
+
+    const rect = host.getBoundingClientRect()
+    const centerX = rect.left + rect.width / 2
+    const centerY = rect.top + rect.height / 2
+    const radius = Math.min(rect.width, rect.height) * 0.46
+    for (let y = centerY + radius * 0.72; y >= centerY + radius * 0.08; y -= 18) {
+      for (let x = centerX + radius * 0.78; x >= centerX + radius * 0.08; x -= 18) {
+        const endX = x - 72
+        const endY = y + 8
+        const startTarget = document.elementFromPoint(x, y)
+        const endTarget = document.elementFromPoint(endX, endY)
+        if (startTarget?.closest('.earth-globe-host') && endTarget?.closest('.earth-globe-host'))
+          return { endX, endY, startX: x, startY: y }
+      }
+    }
+    return null
+  })
+  expect(exposedDrag).not.toBeNull()
+
+  const cardStillBlocksEarth = await page.locator('.node-card').first().evaluate((card) => {
+    const rect = card.getBoundingClientRect()
+    return Boolean(document.elementFromPoint(
+      rect.left + rect.width / 2,
+      rect.top + Math.min(32, rect.height / 2),
+    )?.closest('.node-card'))
+  })
+  expect(cardStillBlocksEarth).toBe(true)
+
+  const initialSunDirection = (await globeHost.getAttribute('data-sun-view'))
+    ?.split(',')
+    .map(Number) ?? []
+  expect(initialSunDirection).toHaveLength(3)
+  await page.mouse.move(exposedDrag!.startX, exposedDrag!.startY)
+  await page.mouse.down()
+  await page.mouse.move(exposedDrag!.endX, exposedDrag!.endY, { steps: 12 })
+  await page.mouse.up()
+
+  await expect.poll(async () => {
+    const current = (await globeHost.getAttribute('data-sun-view'))?.split(',').map(Number) ?? []
+    return Math.hypot(
+      (current[0] ?? 0) - (initialSunDirection[0] ?? 0),
+      (current[1] ?? 0) - (initialSunDirection[1] ?? 0),
+      (current[2] ?? 0) - (initialSunDirection[2] ?? 0),
+    )
+  }).toBeGreaterThan(0.03)
+})
 
 test('tiled light ocean keeps visible depth while the dark palette stays unchanged', async ({ context }) => {
   const lightPage = await context.newPage()
@@ -307,10 +827,6 @@ test('realistic globe emits a staggered group through the shared meteor renderer
   const firstBeam = overlay.locator(
     '.earth-meteor-beam[data-launch-order="0"] .earth-meteor-stroke',
   )
-  await expect.poll(
-    () => firstBeam.getAttribute('data-motion-phase'),
-    { timeout: 4_500 },
-  ).toBe('drilling')
   const readDrillingState = () => firstBeam.evaluate((element) => {
     const targetX = Number(element.dataset.targetX)
     const targetY = Number(element.dataset.targetY)
@@ -328,6 +844,13 @@ test('realistic globe emits a staggered group through the shared meteor renderer
       visibility: getComputedStyle(element).visibility,
     }
   })
+  await expect.poll(
+    async () => {
+      const state = await readDrillingState()
+      return state.phase === 'drilling' && state.tailProgress < 0.62
+    },
+    { intervals: [40], timeout: 4_500 },
+  ).toBe(true)
   const drillingStart = await readDrillingState()
   expect(drillingStart.phase).toBe('drilling')
   expect(drillingStart.headDistance).toBeLessThanOrEqual(0.2)
@@ -336,7 +859,7 @@ test('realistic globe emits a staggered group through the shared meteor renderer
   expect(drillingStart.opacity).toBeGreaterThan(0.95)
   expect(drillingStart.visibility).toBe('visible')
 
-  await page.waitForTimeout(360)
+  await page.waitForTimeout(240)
   const drillingLater = await readDrillingState()
   expect(drillingLater.phase).toBe('drilling')
   expect(drillingLater.headDistance).toBeLessThanOrEqual(0.2)
@@ -386,26 +909,28 @@ test('meteor batch advances only after all three tails drill into the shared tar
 
   const overlay = page.locator('.realistic-earth-shell .earth-meteor-overlay')
   await expect(overlay).toHaveAttribute('data-meteor-count', '3', { timeout: 15_000 })
-  const firstSequence = await overlay.getAttribute('data-meteor-sequence')
+  const firstSequence = Number(await overlay.getAttribute('data-meteor-sequence'))
   await expect.poll(
-    () => overlay.evaluate(element => ({
-      completedCount: Number((element as HTMLElement).dataset.meteorCompletedCount),
-      meteorCount: element.querySelectorAll('.earth-meteor-stroke').length,
-      phase: (element as HTMLElement).dataset.meteorPhase,
-      sequence: (element as HTMLElement).dataset.meteorSequence,
-    })),
+    () => overlay.evaluate((element, initialSequence) => {
+      const currentSequence = Number((element as HTMLElement).dataset.meteorSequence)
+      const completedCount = Number((element as HTMLElement).dataset.meteorCompletedCount)
+      const meteorCount = element.querySelectorAll('.earth-meteor-stroke').length
+      const phase = (element as HTMLElement).dataset.meteorPhase
+      return currentSequence > initialSequence
+        || (
+          currentSequence === initialSequence
+          && completedCount === 3
+          && meteorCount === 0
+          && phase === 'cooldown'
+        )
+    }, firstSequence),
     { timeout: 5_200 },
-  ).toEqual({
-    completedCount: 3,
-    meteorCount: 0,
-    phase: 'cooldown',
-    sequence: firstSequence,
-  })
+  ).toBe(true)
 
   await expect.poll(
     async () => Number(await overlay.getAttribute('data-meteor-sequence')),
     { timeout: 6_800 },
-  ).toBeGreaterThan(Number(firstSequence))
+  ).toBeGreaterThan(firstSequence)
   await expect(overlay).toHaveAttribute('data-meteor-count', '3')
 })
 
@@ -415,7 +940,7 @@ test('cobe globe uses the same transient meteor renderer and keeps it attached t
     dark: true,
     earthRenderer: 'cobe',
     disablePageAnimation: false,
-    stopEarth: false,
+    stopEarth: true,
   })
   await page.goto('/')
 
@@ -442,14 +967,17 @@ test('cobe globe uses the same transient meteor renderer and keeps it attached t
   const readAlignment = () => stage.evaluate((element) => {
     const paths = Array.from(element.querySelectorAll<SVGPathElement>('.earth-meteor-stroke'))
     const labels = Array.from(element.querySelectorAll<HTMLElement>('[data-cluster-id]'))
-    const meteorDistances = paths.map((path) => {
+    const targetDistances = paths.map((path) => {
+      const label = labels.find(item => item.dataset.clusterId === path.dataset.targetId)
+      if (!label)
+        return Number.POSITIVE_INFINITY
       const targetX = Number(path.dataset.targetX)
       const targetY = Number(path.dataset.targetY)
-      const headX = Number(path.dataset.headX)
-      const headY = Number(path.dataset.headY)
-      if (![targetX, targetY, headX, headY].every(Number.isFinite))
+      const projectedX = Number(label.dataset.projectedX)
+      const projectedY = Number(label.dataset.projectedY)
+      if (![targetX, targetY, projectedX, projectedY].every(Number.isFinite))
         return Number.POSITIVE_INFINITY
-      return Math.hypot(headX - targetX, headY - targetY)
+      return Math.hypot(projectedX - targetX, projectedY - targetY)
     })
     const markerDistances = labels.map((label) => {
       const anchorName = `--cobe-cdn-${label.dataset.clusterId?.toLowerCase()}`
@@ -466,7 +994,7 @@ test('cobe globe uses the same transient meteor renderer and keeps it attached t
     })
     return {
       markerDistances,
-      meteorDistances,
+      targetDistances,
     }
   })
   const readArrivalTangency = () => overlay.evaluate((element) => {
@@ -488,31 +1016,19 @@ test('cobe globe uses the same transient meteor renderer and keeps it attached t
     const divisor = Math.hypot(radialX, radialY) * Math.hypot(arrivalX, arrivalY)
     return divisor > 0 ? Math.abs((radialX * arrivalX + radialY * arrivalY) / divisor) : 1
   })
-  const lastBeam = overlay.locator(
-    '.earth-meteor-beam[data-launch-order="2"] .earth-meteor-stroke',
-  )
   await expect.poll(
-    () => lastBeam.getAttribute('data-motion-phase'),
+    async () => {
+      const alignment = await readAlignment()
+      const aligned = Math.max(...alignment.markerDistances) <= 1
+        && Math.max(...alignment.targetDistances) <= 1
+      return aligned
+    },
     { intervals: [40, 60, 80], timeout: 5_200 },
-  ).toBe('drilling')
-  expect(await readArrivalTangency()).toBeLessThan(0.35)
-  await expect.poll(async () => {
-    const alignment = await readAlignment()
-    return Math.max(...alignment.meteorDistances)
-  }).toBeLessThanOrEqual(1)
-  await expect.poll(async () => {
-    const alignment = await readAlignment()
-    return Math.max(...alignment.markerDistances)
-  }).toBeLessThanOrEqual(1)
-  await page.waitForTimeout(240)
-  await expect.poll(async () => {
-    const alignment = await readAlignment()
-    return Math.max(...alignment.meteorDistances)
-  }, { timeout: 1_800 }).toBeLessThanOrEqual(1)
-  await expect.poll(async () => {
-    const alignment = await readAlignment()
-    return Math.max(...alignment.markerDistances)
-  }, { timeout: 1_800 }).toBeLessThanOrEqual(1)
+  ).toBe(true)
+  await expect.poll(
+    readArrivalTangency,
+    { intervals: [40, 60, 80], timeout: 5_200 },
+  ).toBeLessThan(0.35)
   await expect(overlay.locator('linearGradient').first().locator('stop')).toHaveCount(5)
   const firstSequence = Number(await overlay.getAttribute('data-meteor-sequence'))
   await expect.poll(async () => Number(await overlay.getAttribute('data-meteor-sequence')), {

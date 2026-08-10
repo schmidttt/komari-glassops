@@ -23,3 +23,12 @@ Komari and related names belong to their respective project owners.
   distributed with `three-conic-polygon-geometry`.
 - Only the fields required by the local Tiled renderer are retained.
 - Natural Earth data is in the public domain.
+
+## Earth imagery
+
+- The realistic renderer's 2016 night-light texture is derived from NASA Earth
+  Observatory's public Black Marble global color map, based on Suomi NPP VIIRS
+  observations.
+- Source: <https://science.nasa.gov/earth/earth-observatory/earth-at-night/maps/>
+- The daytime Blue Marble, elevation and water-mask textures retain their
+  existing upstream file paths and provenance.

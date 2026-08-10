@@ -589,28 +589,29 @@ const nodeCardGridClass = computed(() => {
               </div>
             </div>
           </div>
-          <TabsContent v-for="g in groups" :key="g.name" :value="g.name" class="pointer-events-auto">
-            <div v-if="activeHomeTool !== 'nodes'" class="mb-4 rounded-lg bg-background/50 px-3 py-2 text-sm text-muted-foreground">
+          <TabsContent v-for="g in groups" :key="g.name" :value="g.name" class="pointer-events-none">
+            <div v-if="activeHomeTool !== 'nodes'" class="pointer-events-auto mb-4 rounded-lg bg-background/50 px-3 py-2 text-sm text-muted-foreground">
               {{ activeToolTitle }} · 当前分组：{{ g.tab }}（{{ groupNodeList.length }} 台）
             </div>
-            <NodeTopologyPanel v-if="activeHomeTool === 'topology'" :nodes="groupNodeList" />
-            <NodeComparePanel v-else-if="activeHomeTool === 'nodeCompare'" :nodes="groupNodeList" />
-            <ProviderValuePanel v-else-if="activeHomeTool === 'providerValue'" :nodes="groupNodeList" />
-            <HealthSummaryPanel v-else-if="activeHomeTool === 'healthSummary'" :nodes="groupNodeList" />
-            <SnapshotExportPanel v-else-if="activeHomeTool === 'snapshotExport'" :nodes="groupNodeList" />
-            <AuditLogPanel v-else-if="activeHomeTool === 'auditLog'" />
+            <NodeTopologyPanel v-if="activeHomeTool === 'topology'" class="pointer-events-auto" :nodes="groupNodeList" />
+            <NodeComparePanel v-else-if="activeHomeTool === 'nodeCompare'" class="pointer-events-auto" :nodes="groupNodeList" />
+            <ProviderValuePanel v-else-if="activeHomeTool === 'providerValue'" class="pointer-events-auto" :nodes="groupNodeList" />
+            <HealthSummaryPanel v-else-if="activeHomeTool === 'healthSummary'" class="pointer-events-auto" :nodes="groupNodeList" />
+            <SnapshotExportPanel v-else-if="activeHomeTool === 'snapshotExport'" class="pointer-events-auto" :nodes="groupNodeList" />
+            <AuditLogPanel v-else-if="activeHomeTool === 'auditLog'" class="pointer-events-auto" />
             <TransitionGroup
               v-else-if="nodeList.length !== 0 && appStore.nodeViewMode === 'card'"
               :appear="enableNodeCardTransition"
               :css="enableNodeCardTransition"
               name="node-card-switch"
               tag="div"
+              class="pointer-events-none"
               :class="nodeCardGridClass"
             >
               <div
                 v-for="(node, index) in nodeList"
                 :key="`${getNodeItemTransitionKey(node)}:${deferNodeCards ? 'deferred' : 'full'}`"
-                class="min-w-0"
+                class="min-w-0 pointer-events-auto"
                 :style="getNodeItemTransitionStyle(index)"
               >
                 <DeferredRender
@@ -630,6 +631,7 @@ const nodeCardGridClass = computed(() => {
             </TransitionGroup>
             <NodeList
               v-else-if="nodeList.length !== 0 && appStore.nodeViewMode === 'list'"
+              class="pointer-events-auto"
               :nodes="nodeList"
               :transition-key="appStore.nodeSelectedGroup"
               :sort-reset-key="nodeListSortResetKey"
