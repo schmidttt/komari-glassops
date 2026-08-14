@@ -7,6 +7,7 @@ import { Button } from '@/components/ui/button'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
 import VisitorInfo from '@/components/VisitorInfo.vue'
 import { useVisitorAudit } from '@/composables/useVisitorAudit'
+import { resolveAdminEntryPath } from '@/services/admin-navigation.service'
 import { useAppStore } from '@/stores/app'
 
 const router = useRouter()
@@ -77,7 +78,7 @@ const actionButtons = computed(() => {
   return buttons
 })
 
-function handleButtonClick(action: string) {
+async function handleButtonClick(action: string) {
   switch (action) {
     case 'toggleTheme':
       appStore.updateThemeMode()
@@ -94,20 +95,26 @@ function handleButtonClick(action: string) {
     case 'openHomePingSettings':
       appStore.homePingSettingsVisible = true
       break
-    case 'jumpToSetting':
+    case 'jumpToSetting': {
       void recordVisitorEvent({
         event: 'admin_entry_click',
         path: router.currentRoute.value.path,
         route: String(router.currentRoute.value.name ?? ''),
       })
+      const adminEntryPath = await resolveAdminEntryPath()
+      if (adminEntryPath === '/admin') {
+        location.href = adminEntryPath
+        break
+      }
       try {
         sessionStorage.setItem('komariOfficialAppRoute', '/admin')
-        location.href = '/admin-app/index.html'
+        location.href = adminEntryPath
       }
       catch {
         location.href = '/admin-app/index.html?__komari_route=%2Fadmin'
       }
       break
+    }
   }
 }
 

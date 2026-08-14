@@ -9,7 +9,6 @@ const sourceRoot = resolve(process.argv[2] || process.env.KOMARI_WEB_DIR || reso
 const sourceDist = resolve(sourceRoot, 'dist')
 const targetDir = resolve(projectRoot, 'public', 'admin-app')
 const overrideCss = resolve(projectRoot, 'scripts', 'assets', 'glass-admin.css')
-const enhancementScript = resolve(projectRoot, 'scripts', 'assets', 'glass-admin-enhancements.js')
 const charsetMarker = '<meta charset="UTF-8" />'
 const pwaRegisterPattern = /<script[^>]+id="vite-plugin-pwa:register-sw"[^>]*><\/script>/g
 const workboxFilenamePattern = /^workbox-[\w-]+\.js$/
@@ -19,7 +18,8 @@ const runtimeAssetPathRewrites = [
 ] as const
 const runtimeAssetReferencePattern = /assets\/(?:flags|logo)\//g
 const adminCssVersion = createHash('sha256').update(readFileSync(overrideCss)).digest('hex').slice(0, 12)
-const adminEnhancementVersion = createHash('sha256').update(readFileSync(enhancementScript)).digest('hex').slice(0, 12)
+const compatibleKomariVersions = ['1.4.3']
+const skipBuild = process.env.KOMARI_WEB_SKIP_BUILD === '1'
 
 function rewriteRuntimeAssetPaths(directory: string): number {
   let replacements = 0
@@ -78,11 +78,16 @@ function countRuntimeAssetReferences(directory: string): number {
 if (!existsSync(resolve(sourceRoot, 'package.json')))
   throw new Error(`komari-web source not found: ${sourceRoot}`)
 
-const npmCommand = process.platform === 'win32' ? 'npm.cmd' : 'npm'
-execFileSync(npmCommand, ['run', 'build', '--', '--base=/admin-app/'], {
-  cwd: sourceRoot,
-  stdio: 'inherit',
-})
+if (!skipBuild) {
+  const npmCommand = process.platform === 'win32' ? 'npm.cmd' : 'npm'
+  execFileSync(npmCommand, ['run', 'build', '--', '--base=/admin-app/'], {
+    cwd: sourceRoot,
+    stdio: 'inherit',
+  })
+}
+
+if (!existsSync(resolve(sourceDist, 'index.html')))
+  throw new Error(`komari-web dist not found: ${sourceDist}`)
 
 rmSync(targetDir, { recursive: true, force: true })
 cpSync(sourceDist, targetDir, { recursive: true })
@@ -97,7 +102,7 @@ let html = readFileSync(indexPath, 'utf8')
 if (!html.includes(charsetMarker))
   throw new Error('komari-web index.html no longer contains the expected charset marker')
 
-const bridge = `<script>;(()=>{let t='';try{t=sessionStorage.getItem('komariOfficialAppRoute')||'';if(t)sessionStorage.removeItem('komariOfficialAppRoute')}catch(e){console.warn('[GlassOps] Session storage is unavailable.',e)}if(!t){try{t=new URL(location.href).searchParams.get('__komari_route')||''}catch{}}if(t&&/^\\/(admin|terminal|manage)(\\/|\\?|#|$)/.test(t))history.replaceState(null,'',t)})();</script><link rel="stylesheet" href="/admin-app/glass-admin.css?v=${adminCssVersion}"><script defer src="/admin-app/glass-admin-enhancements.js?v=${adminEnhancementVersion}"></script>`
+const bridge = `<script>;(()=>{let t='';try{t=sessionStorage.getItem('komariOfficialAppRoute')||'';if(t)sessionStorage.removeItem('komariOfficialAppRoute')}catch(e){console.warn('[GlassOps] Session storage is unavailable.',e)}if(!t){try{t=new URL(location.href).searchParams.get('__komari_route')||''}catch{}}if(t&&/^\\/(admin|terminal|manage)(\\/|\\?|#|$)/.test(t))history.replaceState(null,'',t)})();</script><link rel="stylesheet" href="/admin-app/glass-admin.css?v=${adminCssVersion}">`
 html = html.replace(charsetMarker, `${charsetMarker}${bridge}`)
 
 // The official PWA only controls /admin-app/, while the bridge restores /admin and
@@ -111,7 +116,6 @@ for (const filename of readdirSync(targetDir).filter(filename => workboxFilename
 
 if (
   !html.includes(`/admin-app/glass-admin.css?v=${adminCssVersion}`)
-  || !html.includes(`/admin-app/glass-admin-enhancements.js?v=${adminEnhancementVersion}`)
   || !html.includes('/admin-app/assets/')
 ) {
   throw new Error('komari-web build output is missing the admin bridge stylesheet or /admin-app/ asset base')
@@ -119,7 +123,15 @@ if (
 
 writeFileSync(indexPath, `${html.replace(/\r\n?/g, '\n').replace(/[ \t]+$/gm, '').trimEnd()}\n`)
 cpSync(overrideCss, resolve(targetDir, 'glass-admin.css'))
-cpSync(enhancementScript, resolve(targetDir, 'glass-admin-enhancements.js'))
+
+const compiledScripts = readdirSync(resolve(targetDir, 'assets'))
+  .filter(filename => filename.endsWith('.js'))
+  .map(filename => readFileSync(resolve(targetDir, 'assets', filename), 'utf8'))
+  .join('\n')
+if (!compiledScripts.includes('/api/admin/upload') || !compiledScripts.includes('/init'))
+  throw new Error('komari-web build does not contain the Komari 1.4.3 chunk upload contract')
+if (compiledScripts.includes('/api/admin/theme/upload'))
+  throw new Error('komari-web build still contains the removed legacy theme upload endpoint')
 
 let commit = 'unknown'
 try {
@@ -133,6 +145,7 @@ catch {}
 writeFileSync(resolve(targetDir, 'komari-admin-source.json'), `${JSON.stringify({
   repository: 'https://github.com/komari-monitor/komari-web',
   commit,
+  compatible_komari_versions: compatibleKomariVersions,
   synced_at: new Date().toISOString(),
 }, null, 2)}\n`)
 

@@ -64,7 +64,19 @@ const CACHE_VERSION = 9
 const CACHE_KEY_PREFIX = 'komari-glassops:node-ping-stats'
 const FULL_LOSS_EPSILON = 1e-6
 const PING_RECORD_REFRESH_INTERVAL_MS = 60_000
+const PING_METRIC_BATCH_WINDOW_MS = 20
+const PING_METRIC_BATCH_MAX_NODES = 20
 const sharedPingRecordsCache = new Map<string, SharedPingRecordsEntry>()
+
+interface PendingMetricBatch {
+  nodeUuids: Set<string>
+  waiters: Map<string, Array<(value: SharedPingRecordsState | null) => void>>
+  timer: ReturnType<typeof setTimeout>
+  hours: number
+  maxCount?: number
+}
+
+const pendingMetricBatches = new Map<string, PendingMetricBatch>()
 
 interface TaskRecordSummary {
   total: number
@@ -285,12 +297,21 @@ function buildMetricRecordsByClient(nodeUuid: string, stats: PingMetricTaskStats
   return buildRecordsByClient(syntheticRecords)
 }
 
-async function loadPingMetricRecords(nodeUuid: string, hours: number, maxCount?: number): Promise<SharedPingRecordsState | null> {
+async function loadPingMetricRecordsForNodes(
+  nodeUuids: string[],
+  hours: number,
+  maxCount: number | undefined,
+  batched: boolean,
+): Promise<Map<string, SharedPingRecordsState | null>> {
+  const requestedNodes = [...new Set(nodeUuids.filter(Boolean))]
+  const entityParams = batched
+    ? { entity_ids: requestedNodes }
+    : { entity_id: requestedNodes[0] }
   const [statsResult, metricsResult] = await Promise.allSettled([
-    loadPingMetricStats({ entity_id: nodeUuid, hours, max_points: maxCount }),
+    loadPingMetricStats({ ...entityParams, hours, max_points: maxCount }),
     queryMetrics({
       metric_keys: [PING_LATENCY_METRIC, PING_LOSS_METRIC],
-      entity_id: nodeUuid,
+      ...entityParams,
       hours,
       downsample: true,
       fill_empty: true,
@@ -300,20 +321,26 @@ async function loadPingMetricRecords(nodeUuid: string, hours: number, maxCount?:
   ])
 
   const stats = statsResult.status === 'fulfilled'
-    ? (statsResult.value.stats ?? []).filter(stat => stat.entity_id === nodeUuid)
+    ? (statsResult.value.stats ?? []).filter(stat => requestedNodes.includes(stat.entity_id))
     : []
-  const metricRecords: PingRecord[] = []
-  const metricLossPoints: MetricLossPoint[] = []
-  const metricLossTaskIds = new Set<number>()
+  const metricRecordsByNode = new Map<string, PingRecord[]>()
+  const metricLossPointsByNode = new Map<string, MetricLossPoint[]>()
+  const metricLossTaskIdsByNode = new Map<string, Set<number>>()
 
   if (metricsResult.status === 'fulfilled') {
     const seriesList = normalizeMetricSeriesList(metricsResult.value.series)
     for (const series of seriesList) {
+      const nodeUuid = series.entity_id
+      if (!requestedNodes.includes(nodeUuid))
+        continue
+
       const taskId = normalizeTaskId(pingTaskId(series))
       if (!Number.isFinite(taskId))
         continue
 
       if (series.metric_key === PING_LOSS_METRIC) {
+        const metricLossPoints = metricLossPointsByNode.get(nodeUuid) ?? []
+        const metricLossTaskIds = metricLossTaskIdsByNode.get(nodeUuid) ?? new Set<number>()
         for (const point of series.points) {
           if (!isFiniteNumber(point.value))
             continue
@@ -326,12 +353,15 @@ async function loadPingMetricRecords(nodeUuid: string, hours: number, maxCount?:
           })
           metricLossTaskIds.add(taskId)
         }
+        metricLossPointsByNode.set(nodeUuid, metricLossPoints)
+        metricLossTaskIdsByNode.set(nodeUuid, metricLossTaskIds)
         continue
       }
 
       if (!isPingMetric(series))
         continue
 
+      const metricRecords = metricRecordsByNode.get(nodeUuid) ?? []
       for (const point of series.points) {
         if (point.value === null)
           continue
@@ -343,26 +373,95 @@ async function loadPingMetricRecords(nodeUuid: string, hours: number, maxCount?:
           value: point.value,
         })
       }
+      metricRecordsByNode.set(nodeUuid, metricRecords)
     }
   }
 
-  const recordsByClient = buildMetricRecordsByClient(nodeUuid, stats, metricRecords)
-  const exactLossTaskIds = new Set(
-    stats
-      .filter(stat => stat.total > 0 && !stat.loss_approximate && isFiniteNumber(stat.loss))
-      .map(stat => normalizeTaskId(stat.task_id)),
-  )
-  const hasCompleteLossSeries = exactLossTaskIds.size > 0
-    && [...exactLossTaskIds].every(taskId => metricLossTaskIds.has(taskId))
-  if (!hasCompleteLossSeries)
-    return null
+  const states = new Map<string, SharedPingRecordsState | null>()
+  for (const nodeUuid of requestedNodes) {
+    const nodeStats = stats.filter(stat => stat.entity_id === nodeUuid)
+    const nodeMetricRecords = metricRecordsByNode.get(nodeUuid) ?? []
+    const nodeMetricLossPoints = metricLossPointsByNode.get(nodeUuid) ?? []
+    const metricLossTaskIds = metricLossTaskIdsByNode.get(nodeUuid) ?? new Set<number>()
+    const recordsByClient = buildMetricRecordsByClient(nodeUuid, nodeStats, nodeMetricRecords)
+    const exactLossTaskIds = new Set(
+      nodeStats
+        .filter(stat => stat.total > 0 && !stat.loss_approximate && isFiniteNumber(stat.loss))
+        .map(stat => normalizeTaskId(stat.task_id)),
+    )
+    const hasCompleteLossSeries = exactLossTaskIds.size > 0
+      && [...exactLossTaskIds].every(taskId => metricLossTaskIds.has(taskId))
 
-  return {
-    recordsByClient,
-    source: 'metric',
-    metricStats: stats,
-    metricLossPoints,
+    states.set(nodeUuid, hasCompleteLossSeries
+      ? {
+          recordsByClient,
+          source: 'metric',
+          metricStats: nodeStats,
+          metricLossPoints: nodeMetricLossPoints,
+        }
+      : null)
   }
+
+  return states
+}
+
+async function loadSingleNodePingMetricRecords(nodeUuid: string, hours: number, maxCount?: number): Promise<SharedPingRecordsState | null> {
+  const states = await loadPingMetricRecordsForNodes([nodeUuid], hours, maxCount, false)
+  return states.get(nodeUuid) ?? null
+}
+
+function getMetricBatchKey(hours: number, maxCount?: number): string {
+  return `${hours}:${maxCount ?? 'all'}`
+}
+
+async function flushMetricBatch(key: string): Promise<void> {
+  const batch = pendingMetricBatches.get(key)
+  if (!batch)
+    return
+
+  pendingMetricBatches.delete(key)
+  const nodeUuids = [...batch.nodeUuids]
+  for (let offset = 0; offset < nodeUuids.length; offset += PING_METRIC_BATCH_MAX_NODES) {
+    const chunk = nodeUuids.slice(offset, offset + PING_METRIC_BATCH_MAX_NODES)
+    let states = new Map<string, SharedPingRecordsState | null>()
+    try {
+      states = await loadPingMetricRecordsForNodes(chunk, batch.hours, batch.maxCount, true)
+    }
+    catch {
+    }
+
+    for (const nodeUuid of chunk) {
+      const state = states.get(nodeUuid) ?? null
+      for (const resolve of batch.waiters.get(nodeUuid) ?? [])
+        resolve(state)
+    }
+  }
+}
+
+function loadBatchedPingMetricRecords(nodeUuid: string, hours: number, maxCount?: number): Promise<SharedPingRecordsState | null> {
+  const key = getMetricBatchKey(hours, maxCount)
+
+  return new Promise((resolve) => {
+    const current = pendingMetricBatches.get(key)
+    if (current) {
+      current.nodeUuids.add(nodeUuid)
+      const waiters = current.waiters.get(nodeUuid) ?? []
+      waiters.push(resolve)
+      current.waiters.set(nodeUuid, waiters)
+      return
+    }
+
+    const batch: PendingMetricBatch = {
+      nodeUuids: new Set([nodeUuid]),
+      waiters: new Map([[nodeUuid, [resolve]]]),
+      hours,
+      maxCount,
+      timer: setTimeout(() => {
+        void flushMetricBatch(key)
+      }, PING_METRIC_BATCH_WINDOW_MS),
+    }
+    pendingMetricBatches.set(key, batch)
+  })
 }
 
 async function loadSharedPingRecords(entry: SharedPingRecordsEntry, hours: number, maxCount?: number, nodeUuid?: string): Promise<void> {
@@ -374,7 +473,12 @@ async function loadSharedPingRecords(entry: SharedPingRecordsEntry, hours: numbe
 
   entry.promise = (async () => {
     try {
-      const metricState = nodeUuid ? await loadPingMetricRecords(nodeUuid, hours, maxCount).catch(() => null) : null
+      const batchedMetricState = nodeUuid
+        ? await loadBatchedPingMetricRecords(nodeUuid, hours, maxCount).catch(() => null)
+        : null
+      const metricState = batchedMetricState ?? (nodeUuid
+        ? await loadSingleNodePingMetricRecords(nodeUuid, hours, maxCount).catch(() => null)
+        : null)
       if (entry.subscribers === 0)
         return
 

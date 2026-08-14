@@ -2,10 +2,10 @@
   "name": "Komari GlassOps",
   "short": "GlassOps",
   "description": "A community-based glassmorphism operations theme for Komari",
-  "version": "1.0.7",
+  "version": "1.0.8",
   "author": "Schmidt",
   "url": "https://github.com/Schmidttt/komari-glassops",
-  "preview": "preview-v1.0.7.png",
+  "preview": "preview-v1.0.8.png",
   "configuration": {
     "type": "managed",
     "name": "主题设置",

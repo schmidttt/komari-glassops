@@ -55,6 +55,9 @@ export interface VisualFixtureOptions {
   pingRecordPreserveHours?: number
   approximatePingMetricStats?: boolean
   metricRangeAware?: boolean
+  missingCpuMetricHistory?: boolean
+  pingTaskOrdering?: boolean
+  backendVersion?: string
   nodeCustomTagsVisible?: boolean
   firstNodeTags?: string
   firstNodeTrafficLimit?: number
@@ -240,7 +243,9 @@ function metricValue(key: string, index: number, taskIndex = 0): number {
 
 function buildMetricResponse(payload: Record<string, unknown>, options: VisualFixtureOptions = {}) {
   const requested = Array.isArray(payload.metric_keys) ? payload.metric_keys.map(String) : METRIC_KEYS
-  const uuid = typeof payload.entity_id === 'string' ? payload.entity_id : uuidFor(0)
+  const uuids = Array.isArray(payload.entity_ids)
+    ? payload.entity_ids.map(String)
+    : [typeof payload.entity_id === 'string' ? payload.entity_id : uuidFor(0)]
   const pointCount = options.metricRangeAware ? 96 : 48
   const fallbackEnd = Date.parse(FIXED_NOW)
   const requestedEnd = typeof payload.end === 'string' ? Date.parse(payload.end) : fallbackEnd
@@ -260,21 +265,23 @@ function buildMetricResponse(payload: Record<string, unknown>, options: VisualFi
     time: new Date(rangeStart + index * intervalMs).toISOString(),
     index,
   }))
-  const series = requested.flatMap(key => key.startsWith('ping.')
-    ? PING_TASK_FIXTURES.map((task, taskIndex) => ({
-        metric_key: key,
-        entity_id: uuid,
-        type: 'gauge',
-        tags: { task_id: String(task.id), task_name: task.name },
-        points: points.map(point => ({ time: point.time, value: metricValue(key, point.index, taskIndex), count: 1 })),
-      }))
-    : [{
-        metric_key: key,
-        entity_id: uuid,
-        type: 'gauge',
-        tags: {},
-        points: points.map(point => ({ time: point.time, value: metricValue(key, point.index) })),
-      }])
+  const series = uuids.flatMap(uuid => requested
+    .filter(key => !options.missingCpuMetricHistory || key !== 'cpu.usage')
+    .flatMap(key => key.startsWith('ping.')
+      ? PING_TASK_FIXTURES.map((task, taskIndex) => ({
+          metric_key: key,
+          entity_id: uuid,
+          type: 'gauge',
+          tags: { task_id: String(task.id), task_name: task.name },
+          points: points.map(point => ({ time: point.time, value: metricValue(key, point.index, taskIndex), count: 1 })),
+        }))
+      : [{
+          metric_key: key,
+          entity_id: uuid,
+          type: 'gauge',
+          tags: {},
+          points: points.map(point => ({ time: point.time, value: metricValue(key, point.index) })),
+        }]))
   return { start: points[0].time, end: points.at(-1)?.time, series, count: series.length }
 }
 
@@ -285,6 +292,9 @@ function jsonRpcResult(id: unknown, result: unknown) {
 async function handleRpc(route: Route, options: VisualFixtureOptions = {}): Promise<void> {
   const payload = route.request().postDataJSON() as { id: unknown, method: string, params?: Record<string, unknown> }
   const uuid = typeof payload.params?.uuid === 'string' ? payload.params.uuid : uuidFor(0)
+  const metricNodeUuids = Array.isArray(payload.params?.entity_ids)
+    ? payload.params.entity_ids.map(String)
+    : [typeof payload.params?.entity_id === 'string' ? payload.params.entity_id : uuid]
   const requestedNodeLimit = Math.max(1, Math.min(12, options.nodeLimit ?? 12))
   const limitedClients = Object.fromEntries(Object.entries(clients).slice(0, requestedNodeLimit))
   const fixtureClients = options.firstNodeTags === undefined && options.firstNodeTrafficLimit === undefined
@@ -306,7 +316,10 @@ async function handleRpc(route: Route, options: VisualFixtureOptions = {}): Prom
     time: new Date(Date.parse(FIXED_NOW) - (47 - index) * 75_000).toISOString(),
     value: index % 17 === 0 ? -1 : 76 + index,
   }))
-  const pingTasks = PING_TASK_FIXTURES.slice(0, 3).map((task, index) => ({
+  const orderedPingTaskFixtures = options.pingTaskOrdering
+    ? [PING_TASK_FIXTURES[2]!, PING_TASK_FIXTURES[0]!, PING_TASK_FIXTURES[1]!]
+    : PING_TASK_FIXTURES.slice(0, 3)
+  const pingTasks = orderedPingTaskFixtures.map((task, index) => ({
     id: task.id,
     name: task.name,
     interval: 60,
@@ -358,8 +371,8 @@ async function handleRpc(route: Route, options: VisualFixtureOptions = {}): Prom
         start: FIXED_NOW,
         end: FIXED_NOW,
         interval_seconds: 60,
-        stats: PING_TASK_FIXTURES.map((task, index) => ({
-          entity_id: uuid,
+        stats: metricNodeUuids.flatMap(nodeUuid => PING_TASK_FIXTURES.map((task, index) => ({
+          entity_id: nodeUuid,
           task_id: String(task.id),
           name: task.name,
           type: 'icmp',
@@ -377,8 +390,8 @@ async function handleRpc(route: Route, options: VisualFixtureOptions = {}): Prom
           p99: 14 + index * 27,
           stddev: 1.5 + index,
           p99_p50_ratio: 1.2 + index * 0.12,
-        })),
-        count: PING_TASK_FIXTURES.length,
+        }))),
+        count: metricNodeUuids.length * PING_TASK_FIXTURES.length,
       }
       break
     case 'public:getNodesInformation':
@@ -390,7 +403,7 @@ async function handleRpc(route: Route, options: VisualFixtureOptions = {}): Prom
     case 'public:getVersion':
     case 'common:getBackendVersion':
     case 'rpc.getVersion':
-      result = { version: '1.2.6-visual', hash: 'visual' }
+      result = { version: options.backendVersion ?? '1.2.6-visual', hash: 'visual' }
       break
     default:
       result = null
@@ -489,7 +502,7 @@ export async function installKomariFixture(page: Page, options: VisualFixtureOpt
   }))
   await page.route('**/api/version', route => route.fulfill({
     contentType: 'application/json',
-    body: JSON.stringify({ status: 'success', message: 'ok', data: { version: '1.2.6-visual', hash: 'visual' } }),
+    body: JSON.stringify({ status: 'success', message: 'ok', data: { version: options.backendVersion ?? '1.2.6-visual', hash: 'visual' } }),
   }))
   await page.route('**/api/admin/theme/settings?theme=GlassOps', route => route.fulfill({
     contentType: 'application/json',

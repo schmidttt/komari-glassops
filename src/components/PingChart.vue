@@ -12,10 +12,10 @@ import { Spinner } from '@/components/ui/spinner'
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { PING_RECORD_MAX_COUNT } from '@/constants/load'
 import { loadPingRecordsWithTasks } from '@/services/history.service'
-import { loadPingMetricStats, queryMetrics } from '@/services/metrics.service'
+import { loadPingMetricStats, loadPublicPingTasks, queryMetrics } from '@/services/metrics.service'
 import { useAppStore } from '@/stores/app'
 import { ACCESSIBLE_LINE_TYPES, getChartSeriesPalette } from '@/utils/chartPalette'
-import { isPingMetric, normalizeMetricSeriesList, PING_LATENCY_METRIC, PING_LOSS_METRIC, pingTaskId, pingTaskName } from '@/utils/metricSeries'
+import { isPingMetric, normalizeMetricSeriesList, orderPingTasksByBackend, PING_LATENCY_METRIC, PING_LOSS_METRIC, pingTaskId, pingTaskName } from '@/utils/metricSeries'
 import { cutPeakValues, interpolateNullsLinear } from '@/utils/recordHelper'
 import '@/utils/echarts' // 共享 ECharts 配置
 
@@ -296,7 +296,7 @@ async function loadMetricPingPayload(nodeUuid: string): Promise<{
     ? { start: range.start.toDate().toISOString(), end: range.end.toDate().toISOString() }
     : { hours: selectedHours.value }
 
-  const [statsResult, metricsResult] = await Promise.allSettled([
+  const [statsResult, metricsResult, backendTasksResult] = await Promise.allSettled([
     loadPingMetricStats({ entity_id: nodeUuid, ...metricRangeParams, max_points: PING_RECORD_MAX_COUNT }),
     queryMetrics({
       metric_keys: [PING_LATENCY_METRIC, PING_LOSS_METRIC],
@@ -307,6 +307,7 @@ async function loadMetricPingPayload(nodeUuid: string): Promise<{
       max_points: PING_RECORD_MAX_COUNT,
       aggregation: 'avg',
     }),
+    loadPublicPingTasks(),
   ])
 
   const metricStats = statsResult.status === 'fulfilled'
@@ -351,7 +352,10 @@ async function loadMetricPingPayload(nodeUuid: string): Promise<{
 
   return {
     records: metricRecords,
-    tasks: [...taskMap.values()],
+    tasks: orderPingTasksByBackend(
+      [...taskMap.values()],
+      backendTasksResult.status === 'fulfilled' ? backendTasksResult.value : [],
+    ),
     lossPoints: metricLossPoints,
   }
 }
@@ -1577,6 +1581,7 @@ onBeforeUnmount(() => {
         >
           <div
             v-for="task in latestValues" :key="task.id"
+            :data-ping-task-id="task.id"
             class="flex cursor-pointer select-none items-center gap-3 rounded-lg border border-white/8 bg-background/35 p-2.5 transition-all hover:border-white/15 hover:bg-background/55 hover:shadow-[0_10px_28px_-20px_rgba(0,0,0,0.9)]"
             :class="[!selectedTaskIds.includes(task.id) && 'opacity-30']"
             :onmouseover="(e: MouseEvent) => ((e.currentTarget as HTMLElement).style.borderColor = task.color)"

@@ -471,6 +471,53 @@ test('detail favorite and adjacent-node controls remain compact', async ({ page 
   await expect(page.locator('html')).toHaveJSProperty('scrollWidth', await page.locator('html').evaluate(element => element.clientWidth))
 })
 
+test('historical load view falls back to compatible records when CPU metrics are missing', async ({ page }) => {
+  await page.setViewportSize({ width: 1280, height: 900 })
+  const rpcCalls: Array<{ method: string, params: Record<string, unknown> }> = []
+  page.on('request', (request) => {
+    if (!request.url().includes('/rpc2'))
+      return
+    const payload = request.postDataJSON() as { method?: string, params?: Record<string, unknown> } | null
+    if (payload?.method)
+      rpcCalls.push({ method: payload.method, params: payload.params ?? {} })
+  })
+
+  await installKomariFixture(page, {
+    dark: true,
+    hideEarth: true,
+    missingCpuMetricHistory: true,
+  })
+  await page.goto('/instance/00000000-0000-4000-8000-000000000001')
+  await page.getByRole('tab', { name: '负载', exact: true }).click()
+  await page.locator('[data-load-chart-range]').getByRole('tab', { name: '4 小时', exact: true }).click()
+
+  await expect(page.locator('[data-load-chart-card="cpu"] [data-latest-cpu]')).toBeVisible()
+  await expect.poll(() => rpcCalls.some(call =>
+    call.method === 'common:getRecords'
+    && call.params.type === 'load'
+    && call.params.uuid === '00000000-0000-4000-8000-000000000001',
+  )).toBe(true)
+})
+
+test('detail Ping cards follow the backend task order', async ({ page }) => {
+  await page.setViewportSize({ width: 1280, height: 900 })
+  await installKomariFixture(page, {
+    dark: true,
+    hideEarth: true,
+    pingTaskOrdering: true,
+  })
+  await page.goto('/instance/00000000-0000-4000-8000-000000000001')
+
+  const taskCards = page.locator('[data-ping-task-id]')
+  await expect(taskCards).toHaveCount(8)
+  await expect(taskCards.nth(0)).toHaveAttribute('data-ping-task-id', '3')
+  await expect(taskCards.nth(1)).toHaveAttribute('data-ping-task-id', '1')
+  await expect(taskCards.nth(2)).toHaveAttribute('data-ping-task-id', '2')
+  await expect(taskCards.nth(0)).toContainText('Google')
+  await expect(taskCards.nth(1)).toContainText('洛杉矶')
+  await expect(taskCards.nth(2)).toContainText('法兰克福')
+})
+
 test('clicking outside a pinned Ping tooltip releases it', async ({ page }) => {
   await page.setViewportSize({ width: 1280, height: 720 })
   await openFixture(page, '/instance/00000000-0000-4000-8000-000000000001')
@@ -781,7 +828,7 @@ test('node cards use theme-aware vector icons for their primary metrics', async 
   expect(darkColors).not.toEqual(lightColors)
 })
 
-test('home Ping summaries cap metric history requests at 150 points', async ({ page }) => {
+test('home Ping summaries batch visible nodes and cap metric history at 150 points', async ({ page }) => {
   await page.setViewportSize({ width: 1280, height: 800 })
   const pingRequests: Array<Record<string, unknown>> = []
   page.on('request', (request) => {
@@ -814,41 +861,19 @@ test('home Ping summaries cap metric history requests at 150 points', async ({ p
   await expect.poll(() => pingRequests.length).toBeGreaterThan(0)
 
   expect(pingRequests.every(params => params.max_points === 150)).toBe(true)
+  expect(pingRequests.some(params => Array.isArray(params.entity_ids) && params.entity_ids.length === 12)).toBe(true)
+  expect(pingRequests.some(params => typeof params.entity_id === 'string')).toBe(false)
 })
 
-test('leaving home aborts inactive node Ping metric requests', async ({ page }) => {
+test('leaving home discards delayed batched Ping results without legacy fallbacks', async ({ page }) => {
   await page.setViewportSize({ width: 1280, height: 800 })
-  await page.addInitScript(() => {
-    type PingAbortProbe = Window & {
-      __glassOpsPingAborts?: string[]
-    }
-    const browserWindow = window as PingAbortProbe
-    browserWindow.__glassOpsPingAborts = []
-    const originalFetch = window.fetch.bind(window)
-    window.fetch = (input, init) => {
-      if (typeof init?.body === 'string' && init.signal) {
-        try {
-          const payload = JSON.parse(init.body) as {
-            method?: string
-            params?: { entity_id?: string, metric_keys?: string[] }
-          }
-          const isPingRequest = payload.method === 'public:getPingMetricStats'
-            || (
-              payload.method === 'public:queryMetrics'
-              && payload.params?.metric_keys?.includes('ping.latency_ms')
-            )
-          if (isPingRequest) {
-            const entityId = payload.params?.entity_id ?? ''
-            init.signal.addEventListener('abort', () => {
-              browserWindow.__glassOpsPingAborts?.push(entityId)
-            }, { once: true })
-          }
-        }
-        catch {
-        }
-      }
-      return originalFetch(input, init)
-    }
+  const legacyPingCalls: Record<string, unknown>[] = []
+  page.on('request', (request) => {
+    if (!request.url().includes('/rpc2'))
+      return
+    const payload = request.postDataJSON() as { method?: string, params?: Record<string, unknown> } | null
+    if (payload?.method === 'common:getRecords' && payload.params?.type === 'ping')
+      legacyPingCalls.push(payload.params)
   })
   await installKomariFixture(page, {
     dark: true,
@@ -861,10 +886,8 @@ test('leaving home aborts inactive node Ping metric requests', async ({ page }) 
   await expect(firstCard).toBeVisible()
   await firstCard.click()
   await expect(page.getByRole('heading', { name: '主控-洛杉矶' })).toBeVisible()
-
-  await expect.poll(() => page.evaluate(() =>
-    (window as Window & { __glassOpsPingAborts?: string[] }).__glassOpsPingAborts ?? [],
-  )).toContain('00000000-0000-4000-8000-000000000002')
+  await page.waitForTimeout(2_700)
+  expect(legacyPingCalls).toHaveLength(0)
 })
 
 test('remaining value keeps all complete billing cycles', () => {

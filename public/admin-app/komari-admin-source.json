@@ -1,5 +1,8 @@
 {
   "repository": "https://github.com/komari-monitor/komari-web",
-  "commit": "ebfbd3e079f8777a746276fe67429b519024f7c7",
-  "synced_at": "2026-07-16T10:53:11.650Z"
+  "commit": "4a74e8a81e2e4b1c3da8ad795f9523151efb6b56",
+  "compatible_komari_versions": [
+    "1.4.3"
+  ],
+  "synced_at": "2026-08-14T03:12:00.364Z"
 }
