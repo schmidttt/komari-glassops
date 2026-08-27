@@ -3,6 +3,7 @@ import { computed } from 'vue'
 import VChart from 'vue-echarts'
 import { CardX } from '@/components/ui/card-x'
 import { formatBytes } from '@/utils/helper'
+import { formatUtcMetricBucketDate } from '@/utils/metricAggregation'
 import MetricChartHeader from './MetricChartHeader.vue'
 import '@/utils/echarts'
 
@@ -26,12 +27,16 @@ const props = withDefaults(defineProps<{
   subtitle?: string
   latest?: string
   percentScale?: boolean
+  aggregationIntervalSeconds?: number
+  aggregationLabel?: string
 }>(), {
   tone: 'slate',
   order: 99,
   subtitle: '',
   latest: '',
   percentScale: false,
+  aggregationIntervalSeconds: 0,
+  aggregationLabel: '',
 })
 
 function formatMetricValue(value: number | null | undefined, kind: MetricValueKind): string {
@@ -55,6 +60,7 @@ function formatMetricValue(value: number | null | undefined, kind: MetricValueKi
 }
 
 const primaryKind = computed<MetricValueKind>(() => props.series[0]?.kind ?? 'count')
+const isDailyAggregation = computed(() => props.aggregationIntervalSeconds >= 86_400)
 
 const latestText = computed(() => {
   if (props.latest)
@@ -87,7 +93,12 @@ const chartOption = computed(() => ({
         const kind = source?.kind ?? primaryKind.value
         return `<div style="display:flex;align-items:center;gap:8px"><span style="width:8px;height:8px;border-radius:2px;background:${item.color};flex:none"></span><span>${item.seriesName}</span><strong style="margin-left:auto;padding-left:12px">${formatMetricValue(item.data?.[1], kind)}</strong></div>`
       }).join('')
-      return `<div style="margin-bottom:6px;color:var(--color-muted-foreground)">${items[0]?.axisValueLabel ?? ''}</div><div style="display:flex;flex-direction:column;gap:4px">${rows}</div>`
+      const firstItem = items[0]
+      const time = firstItem?.data?.[0]
+      const title = isDailyAggregation.value && time
+        ? `${formatUtcMetricBucketDate(time, true)} · 日聚合`
+        : `${firstItem?.axisValueLabel ?? ''}${props.aggregationLabel ? ` · ${props.aggregationLabel}` : ''}`
+      return `<div style="margin-bottom:6px;color:var(--color-muted-foreground)">${title}</div><div style="display:flex;flex-direction:column;gap:4px">${rows}</div>`
     },
   },
   legend: {
@@ -102,7 +113,14 @@ const chartOption = computed(() => ({
     type: 'time',
     axisLine: { lineStyle: { color: 'var(--color-border)' } },
     axisTick: { show: false },
-    axisLabel: { color: 'var(--color-muted-foreground)', fontSize: 10, hideOverlap: true },
+    axisLabel: {
+      color: 'var(--color-muted-foreground)',
+      fontSize: 10,
+      hideOverlap: true,
+      ...(isDailyAggregation.value
+        ? { formatter: (value: string | number) => formatUtcMetricBucketDate(value) }
+        : {}),
+    },
     splitLine: { show: false },
   },
   yAxis: {

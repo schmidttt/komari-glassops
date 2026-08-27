@@ -23,6 +23,7 @@ import { useAppStore } from '@/stores/app'
 import { useNodesStore } from '@/stores/nodes'
 import { getChartSeriesPalette, getLoadChartPalette } from '@/utils/chartPalette'
 import { formatBytes, formatBytesSplit } from '@/utils/helper'
+import { formatUtcMetricBucketDate, resolveMetricAggregationInfo } from '@/utils/metricAggregation'
 import { comparePingTaskOrder, createPingTaskOrderMap, metricTags, normalizeMetricSeriesList } from '@/utils/metricSeries'
 import { fillMissingTimePoints } from '@/utils/recordHelper'
 import { getSharedRpc } from '@/utils/rpc'
@@ -222,6 +223,12 @@ const metricData = shallowRef<RecordFormat[] | null>(null)
 const rawMetricSeries = shallowRef<NormalizedMetricSeries[]>([])
 const availableMetricKeys = shallowRef<Set<string>>(new Set())
 const pingTasks = shallowRef<PingTaskInfo[]>([])
+const metricAggregation = computed(() => resolveMetricAggregationInfo(rawMetricSeries.value))
+const historyMetricAggregation = computed(() => metricData.value ? metricAggregation.value : null)
+const pingMetricAggregation = computed(() => resolveMetricAggregationInfo(
+  rawMetricSeries.value.filter(series => series.metric_key === 'ping.latency_ms' || series.metric_key === 'ping.loss'),
+))
+const visibleMetricAggregation = computed(() => historyMetricAggregation.value ?? pingMetricAggregation.value)
 const loading = ref(false)
 const isInitialLoad = ref(true) // 是否为首次加载（用于控制实时模式下的 NSpin 显示）
 const error = ref<string | null>(null)
@@ -855,6 +862,9 @@ const hasPingLossData = computed(() => pingLossChartSeries.value.length > 0)
 // ==================== 工具函数 ====================
 
 function formatTime(time: string, showDate: boolean): string {
+  if (historyMetricAggregation.value?.isDaily)
+    return formatUtcMetricBucketDate(time)
+
   const date = dayjs(time)
   if (showDate) {
     return date.format('M/D HH:mm')
@@ -863,11 +873,16 @@ function formatTime(time: string, showDate: boolean): string {
 }
 
 function formatTimeForTooltip(time: string, hours: number): string {
+  if (historyMetricAggregation.value?.isDaily)
+    return `${formatUtcMetricBucketDate(time, true)} · 日聚合`
+
   const date = dayjs(time)
-  if (hours < 24) {
-    return date.format('HH:mm:ss')
-  }
-  return date.format('MM/DD HH:mm')
+  const formatted = hours < 24
+    ? date.format('HH:mm:ss')
+    : date.format('MM/DD HH:mm')
+  return historyMetricAggregation.value
+    ? `${formatted} · ${historyMetricAggregation.value.label}`
+    : formatted
 }
 
 const showDateInAxis = computed(() => (effectiveHistoryHours.value) >= 24)
@@ -1617,6 +1632,17 @@ onMounted(() => {
           {{ customRangeError }}
         </div>
       </div>
+      <div
+        v-if="visibleMetricAggregation"
+        data-testid="load-aggregation-hint"
+        class="flex flex-wrap items-center justify-center gap-x-2 gap-y-1 text-[11px] text-muted-foreground"
+      >
+        <span class="inline-flex items-center gap-1 font-semibold text-foreground/75">
+          <Icon icon="tabler:calendar-stats" width="13" height="13" />
+          {{ visibleMetricAggregation.label }}
+        </span>
+        <span>每个点表示该统计区间的平均值；日期按统计桶显示。</span>
+      </div>
     </div>
 
     <!-- 内容区域 -->
@@ -1731,6 +1757,8 @@ onMounted(() => {
           tone="sky"
           :series="trafficChartSeries"
           :order="getChartCardOrder('traffic')"
+          :aggregation-interval-seconds="historyMetricAggregation?.intervalSeconds"
+          :aggregation-label="historyMetricAggregation?.label"
         />
 
         <!-- GPU 卡片 -->
@@ -1758,6 +1786,8 @@ onMounted(() => {
           tone="violet"
           :series="gpuMemoryChartSeries"
           :order="getChartCardOrder('gpuMemory')"
+          :aggregation-interval-seconds="historyMetricAggregation?.intervalSeconds"
+          :aggregation-label="historyMetricAggregation?.label"
         />
 
         <MetricSeriesChartCard
@@ -1767,6 +1797,8 @@ onMounted(() => {
           tone="orange"
           :series="temperatureChartSeries"
           :order="getChartCardOrder('temperature')"
+          :aggregation-interval-seconds="historyMetricAggregation?.intervalSeconds"
+          :aggregation-label="historyMetricAggregation?.label"
         />
 
         <!-- 连接数卡片 -->
@@ -1806,6 +1838,8 @@ onMounted(() => {
           tone="cyan"
           :series="pingChartSeries"
           :order="getChartCardOrder('ping')"
+          :aggregation-interval-seconds="pingMetricAggregation?.intervalSeconds"
+          :aggregation-label="pingMetricAggregation?.label"
         />
 
         <MetricSeriesChartCard
@@ -1815,6 +1849,8 @@ onMounted(() => {
           tone="rose"
           :series="pingLossChartSeries"
           :order="getChartCardOrder('pingLoss')"
+          :aggregation-interval-seconds="pingMetricAggregation?.intervalSeconds"
+          :aggregation-label="pingMetricAggregation?.label"
           percent-scale
         />
       </div>

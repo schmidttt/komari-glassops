@@ -15,6 +15,7 @@ import { loadPingRecordsWithTasks } from '@/services/history.service'
 import { loadPingMetricStats, loadPublicPingTasks, queryMetrics } from '@/services/metrics.service'
 import { useAppStore } from '@/stores/app'
 import { ACCESSIBLE_LINE_TYPES, getChartSeriesPalette } from '@/utils/chartPalette'
+import { formatUtcMetricBucketDate, resolveMetricAggregationInfo } from '@/utils/metricAggregation'
 import { isPingMetric, normalizeMetricSeriesList, orderPingTasksByBackend, PING_LATENCY_METRIC, PING_LOSS_METRIC, pingTaskId, pingTaskName } from '@/utils/metricSeries'
 import { cutPeakValues, interpolateNullsLinear } from '@/utils/recordHelper'
 import '@/utils/echarts' // 共享 ECharts 配置
@@ -156,6 +157,7 @@ interface MetricLossPoint {
 }
 
 const remoteLossData = shallowRef<MetricLossPoint[] | null>(null)
+const metricAggregation = shallowRef<ReturnType<typeof resolveMetricAggregationInfo>>(null)
 const remoteRangeStart = computed(() => remoteData.value.at(0)?.time ?? '')
 const remoteRangeEnd = computed(() => remoteData.value.at(-1)?.time ?? '')
 const remoteDataSource = computed(() => remoteLossData.value ? 'metrics' : 'legacy')
@@ -287,6 +289,7 @@ function buildMetricLossPoints(seriesList: MetricSeries[]): MetricLossPoint[] {
 }
 
 async function loadMetricPingPayload(nodeUuid: string): Promise<{
+  aggregation: ReturnType<typeof resolveMetricAggregationInfo>
   records: PingRecord[]
   tasks: PingTaskInfo[]
   lossPoints: MetricLossPoint[]
@@ -351,6 +354,9 @@ async function loadMetricPingPayload(nodeUuid: string): Promise<{
   }
 
   return {
+    aggregation: metricsResult.status === 'fulfilled'
+      ? resolveMetricAggregationInfo(metricsResult.value.series)
+      : null,
     records: metricRecords,
     tasks: orderPingTasksByBackend(
       [...taskMap.values()],
@@ -374,6 +380,7 @@ async function fetchRecords() {
   if (isCustomRange.value && !customRange.value) {
     remoteData.value = []
     remoteLossData.value = null
+    metricAggregation.value = null
     tasks.value = []
     error.value = customRangeError.value || '请选择有效的自定义时间范围'
     legacyCustomRangeFallback.value = false
@@ -408,6 +415,7 @@ async function fetchRecords() {
 
     remoteData.value = records
     remoteLossData.value = metricPayload?.lossPoints ?? null
+    metricAggregation.value = metricPayload?.aggregation ?? null
     tasks.value = result.tasks
 
     if (tasks.value.length > 0 && selectedTaskIds.value.length === 0) {
@@ -422,6 +430,7 @@ async function fetchRecords() {
     legacyCustomRangeFallback.value = false
     remoteData.value = []
     remoteLossData.value = null
+    metricAggregation.value = null
     tasks.value = []
   }
   finally {
@@ -648,6 +657,9 @@ const chartData = computed(() => {
 // ==================== 工具函数 ====================
 
 function formatTime(time: string, showDate: boolean): string {
+  if (metricAggregation.value?.isDaily)
+    return formatUtcMetricBucketDate(time)
+
   const date = dayjs(time)
   if (showDate) {
     return date.format('M/D HH:mm')
@@ -656,11 +668,16 @@ function formatTime(time: string, showDate: boolean): string {
 }
 
 function formatTimeForTooltip(time: string, hours: number): string {
+  if (metricAggregation.value?.isDaily)
+    return `${formatUtcMetricBucketDate(time, true)} · 日聚合`
+
   const date = dayjs(time)
-  if (hours < 24) {
-    return date.format('HH:mm:ss')
-  }
-  return date.format('MM/DD HH:mm')
+  const formatted = hours < 24
+    ? date.format('HH:mm:ss')
+    : date.format('MM/DD HH:mm')
+  return metricAggregation.value
+    ? `${formatted} · ${metricAggregation.value.label}`
+    : formatted
 }
 
 const showDateInAxis = computed(() => selectedHours.value >= 24)
@@ -1371,6 +1388,7 @@ watch(selectedView, () => {
 watch(() => props.uuid, () => {
   remoteData.value = []
   remoteLossData.value = null
+  metricAggregation.value = null
   tasks.value = []
   selectedTaskIds.value = []
   fetchRecords()
@@ -1562,6 +1580,17 @@ onBeforeUnmount(() => {
           旧接口按可用保留时长回溯，再裁剪到所选区间
         </div>
       </div>
+      <div
+        v-if="metricAggregation"
+        data-testid="ping-aggregation-hint"
+        class="flex flex-wrap items-center justify-center gap-x-2 gap-y-1 text-[11px] text-muted-foreground"
+      >
+        <span class="inline-flex items-center gap-1 font-semibold text-foreground/75">
+          <Icon icon="tabler:calendar-stats" width="13" height="13" />
+          {{ metricAggregation.label }}
+        </span>
+        <span>每个点表示该统计区间的平均值；日期按统计桶显示。</span>
+      </div>
     </div>
 
     <!-- 内容区域 -->
@@ -1693,6 +1722,7 @@ onBeforeUnmount(() => {
           :data-ping-source="remoteDataSource"
           :data-ping-range-start="remoteRangeStart"
           :data-ping-range-end="remoteRangeEnd"
+          :data-ping-aggregation-interval="metricAggregation?.intervalSeconds ?? ''"
           class="overflow-hidden rounded-xl border border-black/8 bg-background/45 dark:border-white/8"
           @pointerenter="handleChartSurfacePointerMove"
           @pointermove="handleChartSurfacePointerMove"
