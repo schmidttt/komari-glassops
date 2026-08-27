@@ -778,6 +778,42 @@ test('90-day Ping view keeps the full metric range instead of falling back to ca
   expect(rpcCalls.some(call => call.method === 'common:getRecords' && call.params.type === 'ping')).toBe(false)
 })
 
+test('daily metric aggregates show their interval and UTC bucket date instead of a misleading local 08:00', async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 900 })
+  await installKomariFixture(page, {
+    dark: true,
+    hideEarth: true,
+    pingRecordPreserveHours: 90 * 24,
+    metricAggregationIntervalSeconds: 86_400,
+  })
+  await page.goto('/instance/00000000-0000-4000-8000-000000000001')
+  await expect(page.getByRole('heading', { name: 'Komari Visual Lab' })).toBeVisible()
+
+  await page.getByRole('tab', { name: '负载', exact: true }).click()
+  await page.locator('[data-load-chart-range]').getByRole('tab', { name: '30 天', exact: true }).click()
+  const loadAggregationHint = page.getByTestId('load-aggregation-hint')
+  await expect(loadAggregationHint).toContainText('按日聚合')
+  await expect(loadAggregationHint).toContainText('每个点表示该统计区间的平均值')
+
+  await page.getByRole('tab', { name: '延迟', exact: true }).click()
+  await page.getByRole('tab', { name: '90 天', exact: true }).click()
+  const aggregationHint = page.getByTestId('ping-aggregation-hint')
+  await expect(aggregationHint).toContainText('按日聚合')
+  await expect(aggregationHint).toContainText('每个点表示该统计区间的平均值')
+
+  const chartSurface = page.getByTestId('ping-chart-surface')
+  await expect(chartSurface).toHaveAttribute('data-ping-aggregation-interval', '86400')
+  await expect.poll(() => chartSurface.getAttribute('data-ping-range-start')).toMatch(/T00:00:00\.000Z$/)
+  await chartSurface.click({ position: { x: 720, y: 210 } })
+
+  const tooltipRows = page.locator('[data-ping-tooltip-scroll]').first()
+  await expect(tooltipRows).toBeVisible()
+  await expect.poll(() => tooltipRows.evaluate(element => element.parentElement?.textContent ?? ''))
+    .toMatch(/2026\/\d{2}\/\d{2} · 日聚合/)
+  const tooltipText = await tooltipRows.evaluate(element => element.parentElement?.textContent ?? '')
+  expect(tooltipText).not.toContain('08:00')
+})
+
 test('overview card details appear on whole-card hover without a click', async ({ page }) => {
   await page.setViewportSize({ width: 1280, height: 800 })
   await installKomariFixture(page, {

@@ -55,6 +55,7 @@ export interface VisualFixtureOptions {
   pingRecordPreserveHours?: number
   approximatePingMetricStats?: boolean
   metricRangeAware?: boolean
+  metricAggregationIntervalSeconds?: number
   missingCpuMetricHistory?: boolean
   pingTaskOrdering?: boolean
   backendVersion?: string
@@ -246,7 +247,6 @@ function buildMetricResponse(payload: Record<string, unknown>, options: VisualFi
   const uuids = Array.isArray(payload.entity_ids)
     ? payload.entity_ids.map(String)
     : [typeof payload.entity_id === 'string' ? payload.entity_id : uuidFor(0)]
-  const pointCount = options.metricRangeAware ? 96 : 48
   const fallbackEnd = Date.parse(FIXED_NOW)
   const requestedEnd = typeof payload.end === 'string' ? Date.parse(payload.end) : fallbackEnd
   const requestedHours = typeof payload.hours === 'number' && Number.isFinite(payload.hours)
@@ -255,16 +255,36 @@ function buildMetricResponse(payload: Record<string, unknown>, options: VisualFi
   const requestedStart = typeof payload.start === 'string'
     ? Date.parse(payload.start)
     : requestedEnd - requestedHours * 3_600_000
-  const intervalMs = options.metricRangeAware
-    ? Math.max(1, (requestedEnd - requestedStart) / Math.max(1, pointCount - 1))
-    : 75_000
-  const rangeStart = options.metricRangeAware
-    ? requestedStart
-    : fallbackEnd - (pointCount - 1) * intervalMs
+  const defaultPointCount = options.metricRangeAware ? 96 : 48
+  const configuredIntervalSeconds = options.metricAggregationIntervalSeconds ?? 0
+  const configuredIntervalMs = configuredIntervalSeconds * 1000
+  const useConfiguredAggregation = configuredIntervalMs > 0 && requestedEnd - requestedStart >= configuredIntervalMs
+  let intervalMs = 75_000
+  if (useConfiguredAggregation)
+    intervalMs = configuredIntervalMs
+  else if (options.metricRangeAware)
+    intervalMs = Math.max(1, (requestedEnd - requestedStart) / Math.max(1, defaultPointCount - 1))
+
+  let rangeStart = fallbackEnd - (defaultPointCount - 1) * intervalMs
+  if (useConfiguredAggregation)
+    rangeStart = Math.ceil(requestedStart / intervalMs) * intervalMs
+  else if (options.metricRangeAware)
+    rangeStart = requestedStart
+  const pointCount = useConfiguredAggregation
+    ? Math.max(1, Math.floor((requestedEnd - rangeStart) / intervalMs) + 1)
+    : defaultPointCount
   const points = Array.from({ length: pointCount }, (_, index) => ({
     time: new Date(rangeStart + index * intervalMs).toISOString(),
     index,
   }))
+  const aggregationMetadata = useConfiguredAggregation
+    ? {
+        downsampled: true,
+        downsample_algorithm: 'avg',
+        interval_seconds: configuredIntervalSeconds,
+        max_points: typeof payload.max_points === 'number' ? payload.max_points : undefined,
+      }
+    : { downsampled: false }
   const series = uuids.flatMap(uuid => requested
     .filter(key => !options.missingCpuMetricHistory || key !== 'cpu.usage')
     .flatMap(key => key.startsWith('ping.')
@@ -273,6 +293,7 @@ function buildMetricResponse(payload: Record<string, unknown>, options: VisualFi
           entity_id: uuid,
           type: 'gauge',
           tags: { task_id: String(task.id), task_name: task.name },
+          ...aggregationMetadata,
           points: points.map(point => ({ time: point.time, value: metricValue(key, point.index, taskIndex), count: 1 })),
         }))
       : [{
@@ -280,6 +301,7 @@ function buildMetricResponse(payload: Record<string, unknown>, options: VisualFi
           entity_id: uuid,
           type: 'gauge',
           tags: {},
+          ...aggregationMetadata,
           points: points.map(point => ({ time: point.time, value: metricValue(key, point.index) })),
         }]))
   return { start: points[0].time, end: points.at(-1)?.time, series, count: series.length }

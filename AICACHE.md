@@ -12,15 +12,25 @@
 
 ## 当前任务
 
-- 状态：ready-to-publish（v1.0.8 本地验收通过，等待提交与线上发布验证）。
-- 目标：兼容 Komari 1.4.3 后台上传与管理端变化，修复详情历史 CPU 回退和 Ping 任务顺序，并降低首页多节点 Ping 请求开销；充分验证后发布 v1.0.8。
-- 里程碑：M2 性能、M4 UI/UX、M6 兼容测试与发布。
-- 范围：同步并版本保护主题内置后台；未知或未验证 Komari 版本回退官方 `/admin`；缺少有效 CPU 指标时保留独立 Metric 序列并回退兼容记录；详情 Ping 顺序跟随后台；首页 Ping 指标批量读取并保留逐节点回退；清单、更新日志、发布说明与回归测试统一到 v1.0.8。
-- 兼容边界：继续使用字符串主题元数据并维持 Komari 1.3.1+；不采用 1.4.3 仅支持的本地化元数据或无法表达每节点 0–3 项选择的平面 `pingtasks` 配置；到期预警保留 7/15 天。
-- 验证顺序：ESLint -> type-check -> production build/ZIP -> Chromium Playwright 全量回归 -> 内置后台 1.4.3 上传契约/路由回退 -> ZIP 内容与版本 -> GitHub Actions、标签、Release 和线上资产。
-- 发布边界：只提交本次明确实现、测试、版本和发布文档；排除既有未跟踪的博文素材和 v1.0.6 交接文件。用户已明确授权验证通过后提交、推送并发布 v1.0.8。
+- 状态：ready-to-publish（v1.0.9 本地发布候选已完成，准备通过独立分支与 PR 进入 `main`）。
+- 目标：发布 v1.0.9，解释并消除长时间范围 Metric 日聚合点显示为本地 `08:00` 的误导，保持后端统计值与聚合语义不变。
+- 里程碑：M4 UI/UX、M6 回归与交接。
+- 范围：PingChart 展示服务端聚合粒度、日聚合横轴与 tooltip 使用统计桶日期；复核并小范围修复 LoadChart 同类问题；补充 `interval_seconds=86400` 的 Playwright 回归；更新清单、README、CHANGELOG、Release 正文和版本化预览到 v1.0.9；完成 lint、类型检查、生产构建、完整 Playwright 验证并生成测试包。
+- 不做：不改 Metric 数值、聚合算法、请求点数或后端；没有证据不改自定义区间结束语义；不触碰既有博文和旧交接文件。版本提交合并到 `main` 后，仓库工作流会自动重新验证并创建 `v1.0.9` Tag 和 Release，不手工提前创建。
+- 实时基线：工作树起始为干净 detached HEAD；本地 `main`、`origin/main` 与 HEAD 均为 `add14fa9d469953a834e17208856d3aa562d6fce`，清单版本 `1.0.8`。Komari `main` 于 2026-08-27 复核仍为 `e31a032d8909f4c6958d69870f114abb42f35ebc`。
 
 ## 执行日志
+
+### 2026-08-27 Metric 历史聚合粒度与日桶时间显示优化
+
+- 已完整读取根目录与 `src/` 作用域规则、AI 开发手册和本文件，并核对实时 Git 状态、现有 Playwright 结构及 Komari 当前后端源码。
+- 后端复核确认：`public:queryMetrics` 默认 500 点并按范围选择标准间隔，再由可用 rollup 层提升兼容间隔；响应序列包含 `downsampled`、`interval_seconds`、`max_points`，日桶时间以 UTC 返回。前端 PingChart 和 LoadChart 都保留元数据但未用于解释时间显示。
+- 自定义范围使用 `datetime-local`，前端把用户选定的准确开始/结束时刻原样转成 ISO，并按同一闭区间裁剪；没有发现自动漏掉结束日的代码证据，因此不扩大结束边界。
+- 新增共享聚合信息解析与 UTC 日桶日期格式化：仅在服务端明确返回 `downsampled=true` 且 `interval_seconds` 有效时显示分钟、小时或日聚合；不重算、不平滑、不替换后端数值。PingChart 与 LoadChart 都显示“每点为该统计区间平均值”的提示；日聚合横轴改为统计桶日期，tooltip 标题为 `YYYY/MM/DD · 日聚合`，不再把 UTC 桶起点渲染为本地 `08:00`。
+- LoadChart 将普通负载历史和独立 Ping 序列的聚合上下文分开传递；旧负载记录回退不会被 Ping 的聚合元数据误标。回归夹具可模拟 `interval_seconds=86400` 和 UTC `00:00` 日桶，并同时验证 LoadChart 提示、PingChart 提示、日桶范围与 tooltip 不含 `08:00`。
+- 最终验证：全仓 ESLint、`vue-tsc --build`、Vite production build、`git diff --check` 均通过；相关 Chromium 回归先以 6/6 通过，随后完整 Playwright 100/100 通过，覆盖配置矩阵、地球渲染、历史负载回退、普通 Ping tooltip、首次异步 hover、90 天 Metric 范围、新增日聚合场景、主题设置与视觉快照。构建只保留既有 VueUse PURE 注释和大分块非阻断提示；本机无 Bun，使用锁文件完全相同的既有依赖直接执行等价工具，未改 `package.json` 或 `bun.lock`。
+- 发布资料已按 GitHub 当前 README 的相同结构更新到 v1.0.9：保留“当前版本”表格和新到旧版本日志格式，同步 `CHANGELOG.md`、`docs/release-v1.0.9.md`、预览源、1600×900 的 `preview.png` 与 `preview-v1.0.9.png`。两份预览 SHA-256 均为 `99f043386077a88ca6bf751844d5b7d782ebc2015303024e9cc04b654c4536ec`。
+- v1.0.9 本地测试包：`komari-glassops-v1.0.9-build-add14fa-dirty.zip`，9,349,554 bytes，812 个条目，SHA-256 `95cfd714cb59fdbe7777b14cf30f0abb27b546dcb67bc8d96beaa62a99645d28`。压缩数据完整且无 sourcemap，包内清单为 `1.0.9 / preview-v1.0.9.png`，包含两份字节一致的预览和 `dist/`。本哈希取代本节此前 v1.0.8 本地测试包；合并后 GitHub Actions 会按干净提交 SHA 重新构建正式资产，文件名和哈希将不同。真实 Komari 导入后的 90 天和自定义跨月显示仍需用户验证。
 
 ### 2026-08-14 GlassOps v1.0.8 Komari 1.4.3 兼容与数据请求优化
 
