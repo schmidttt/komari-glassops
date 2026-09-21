@@ -12,14 +12,24 @@
 
 ## 当前任务
 
-- 状态：ready-to-publish（v1.0.9 本地发布候选已完成，准备通过独立分支与 PR 进入 `main`）。
-- 目标：发布 v1.0.9，解释并消除长时间范围 Metric 日聚合点显示为本地 `08:00` 的误导，保持后端统计值与聚合语义不变。
-- 里程碑：M4 UI/UX、M6 回归与交接。
-- 范围：PingChart 展示服务端聚合粒度、日聚合横轴与 tooltip 使用统计桶日期；复核并小范围修复 LoadChart 同类问题；补充 `interval_seconds=86400` 的 Playwright 回归；更新清单、README、CHANGELOG、Release 正文和版本化预览到 v1.0.9；完成 lint、类型检查、生产构建、完整 Playwright 验证并生成测试包。
-- 不做：不改 Metric 数值、聚合算法、请求点数或后端；没有证据不改自定义区间结束语义；不触碰既有博文和旧交接文件。版本提交合并到 `main` 后，仓库工作流会自动重新验证并创建 `v1.0.9` Tag 和 Release，不手工提前创建。
-- 实时基线：工作树起始为干净 detached HEAD；本地 `main`、`origin/main` 与 HEAD 均为 `add14fa9d469953a834e17208856d3aa562d6fce`，清单版本 `1.0.8`。Komari `main` 于 2026-08-27 复核仍为 `e31a032d8909f4c6958d69870f114abb42f35ebc`。
+- 状态：release-ready（v1.0.10 适配完成；发布状态须以 GitHub PR、Actions 和 Release 实时结果为准）。
+- 目标：保留 1.4.3 后台，新增固定来源的 1.5.0-fix1 后台；版本选择与直达入口均验证后端版本，未知版本回退官方后台。
+- 范围：后台资产、精确版本选择、入口保护、兼容回归、发布说明；首页、历史统计与服务器配置保持不变。
+- 基线：远端 main / v1.0.9 为 `6e40150`，独立分支 `agent/komari-1.5-compat-v1.0.10`；原工作树中的博文、素材及审查记录不纳入发布。
+- 授权：用户明确要求“继续适配，弄好上线主题新版本”；验证通过后按分支/PR 流程合并并验证 Release。
+- 验证：代码规范、类型检查、生产构建、ZIP、完整浏览器回归，以及可行的隔离真实后端联调；生产 VPS 和 Agent 不在本轮操作范围。
 
 ## 执行日志
+
+### 2026-09-21 GlassOps v1.0.10 双版本后台适配收口
+
+- 复核 GitHub：Komari 仍为归档状态，最新正式版仍为 `1.5.0-fix1`；GlassOps 远端 main / v1.0.9 仍为 `6e40150`，上次未发布。
+- 固定 Komari Web `3324844cfa347f18c83435f1ccf5634df7e5b768`，新增 `admin-app-1.5`，保留 1.4.3 的 `admin-app`。首页按精确版本选择，两个静态入口均先检查版本再启动应用；不匹配、查询失败或超时回到官方后台。
+- 新后台包含终端工作区、会话恢复和远程文件工作台，移除失效的内置流量定时报告入口；不改变首页和历史指标行为，不升级生产后端或 Agent。
+- 上次联调失败来自未展开节点菜单。重建官方后端标签源码的隔离测试环境，真实上传、启用、设置保存读回和工作台加载均通过；新增可重复运行的 `scripts/verify-komari-admin.mjs`。
+- 上游生成的编辑器和语法资源含模板字符串/样式的原有行尾空白，保留原样；自有源码的 diff 空白检查通过。
+- 截图复核发现通用 `aside` 样式影响新版深色编辑器侧栏；将其限制在后台布局内，增加实际颜色断言，保留编辑器自身配色。
+- README、CHANGELOG、Release 说明和版本预览同步到 v1.0.10；原工作树未提交博文及素材保持不动。
 
 ### 2026-08-27 Metric 历史聚合粒度与日桶时间显示优化
 
@@ -411,6 +421,8 @@
 
 ## 验证记录
 
+- 2026-09-21 v1.0.10：ESLint、Vue 类型检查、生产构建、ZIP 结构/CRC、114 项 Chromium 回归及隔离真实 1.5.0-fix1 后端联调通过。后端由官方标签源码构建；联调仅使用临时账号和离线合成节点，未测试真实 Agent 远程命令、文件读写、Safari 或长期运行。
+
 - 2026-07-14 v3.1.4 Issue #18 release：`bun run lint`、`bun run build`、`git diff --check` 通过；发布提交 `91c9b06` 已推送 `main`，Actions run `#29312369165`（#49）成功，tag / Release target 均为完整提交 `91c9b06fc5c4b5ee2636dc18779861186806abd7`，Issue #18 已关闭。线上 zip `komari-theme-Glassmorphism-build-91c9b06.zip` 大小 5,114,852 bytes，SHA-256 `f8b4c9b6f61cc66d755d7a612357d16d1d2774f9494b9b0c3ce87e572ee5da9b`，下载复核顶层结构 `komari-theme.json`、`preview.png`、`dist/`，包内版本 `3.1.4`。构建仍只有既有 `@vueuse/core` PURE 注释与 `globe` 大 chunk 警告。
 - 2026-07-14 v3.1.3 release：发布提交 `4f37416` 已推送 `main`；GitHub Actions run `#29311122789` 成功。Release `v3.1.3` 为正式发布（非 draft / prerelease），target 为完整提交 `4f3741692bd81141ed542614d5b31a01ff0dc0fc`，zip 资产 `komari-theme-Glassmorphism-build-4f37416.zip` 上传状态为 `uploaded`。下载复核：大小 5,120,783 bytes，SHA-256 `f4d5f1be0c769ffc5372ab6a9b780042768f82529827b7222a843ef642605bee`，顶层结构 `komari-theme.json`、`preview.png`、`dist/`，包内版本 `3.1.3`。
 - 2026-07-14 v3.1.0 release：发布提交 `14dac71` 已推送 `main`；GitHub Actions run `#42` 成功。Release `v3.1.0` 为正式发布（非 draft / prerelease），target 为完整提交 `14dac711d3e1ad1e7963c6dc2609ab6d1921f82d`，zip 资产上传状态为 `uploaded`。
@@ -446,6 +458,8 @@
 - 不应对整个 `NodeData` 使用 `markRaw`，否则会破坏实时 CPU、内存、网络和在线状态响应式刷新。
 
 ## 交接说明
+
+- v1.0.10 本地适配和验收已完成，按用户已授权的分支/PR 流程提交并等待 CI 后合并，版本提升将触发自动 Release；仅 GitHub 实际生成且下载校验成功的资产可称为正式发布。回退可重新导入 v1.0.9，不会回退后端。
 
 已完成：
 

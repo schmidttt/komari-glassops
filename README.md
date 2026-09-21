@@ -3,22 +3,22 @@
 面向 [Komari Monitor](https://github.com/komari-monitor/komari) 的社区维护型毛玻璃运维主题，重点优化宽屏信息密度、节点监控效率、地球视图和深浅色体验。
 
 [![Release](https://img.shields.io/github/v/release/Schmidttt/komari-glassops?style=flat-square&label=Release)](https://github.com/Schmidttt/komari-glassops/releases/latest)
-[![Komari](https://img.shields.io/badge/Komari-1.4.3-2f81f7?style=flat-square)](https://github.com/komari-monitor/komari/releases/tag/1.4.3)
+[![Komari](https://img.shields.io/badge/Komari-1.5.0--fix1-2f81f7?style=flat-square)](https://github.com/komari-monitor/komari/releases/tag/1.5.0-fix1)
 [![License](https://img.shields.io/github/license/Schmidttt/komari-glassops?style=flat-square)](LICENSE)
 
 [下载最新版](https://github.com/Schmidttt/komari-glassops/releases/latest) · [查看特色](#核心特色) · [安装主题](#安装与更新) · [版本日志](#版本日志)
 
-![Komari GlassOps v1.0.9 暗色首页预览](docs/preview-v1.0.9.png)
+![Komari GlassOps v1.0.10 暗色首页预览](docs/preview-v1.0.10.png)
 
 ## 当前版本
 
-| 项目     | 说明                                                                                                                                                                                                                                                                                            |
-| -------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| 最新版本 | `v1.0.9`                                                                                                                                                                                                                                                                                        |
-| 重点适配 | Komari `1.4.3`                                                                                                                                                                                                                                                                                  |
-| 默认外观 | 暗色毛玻璃                                                                                                                                                                                                                                                                                      |
-| 安装方式 | 在 Komari 后台导入主题 ZIP                                                                                                                                                                                                                                                                      |
-| 版本概要 | - 长时间范围会根据服务端元数据明确显示分钟、小时或日聚合粒度。<br>- 日聚合横轴和提示使用统计桶日期，不再显示误导性的本地 `08:00`。<br>- 负载图与 Ping 图分别解释各自数据源的聚合状态，兼容旧记录回退。<br>- 保持后端数值、聚合算法和自定义区间边界不变。<br>- 完整说明见[版本日志](#版本日志)。 |
+| 项目     | 说明                                                                                                                                                                                                 |
+| -------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 最新版本 | `v1.0.10`                                                                                                                                                                                            |
+| 重点适配 | Komari `1.5.0-fix1`，保留 `1.4.3` 后台                                                                                                                                                               |
+| 默认外观 | 暗色毛玻璃                                                                                                                                                                                           |
+| 安装方式 | 在 Komari 后台导入主题 ZIP                                                                                                                                                                           |
+| 版本概要 | - 新增新版终端与文件管理后台。<br>- 保留 1.4.3 后台并按版本自动选择。<br>- 直接打开后台链接也会检查兼容性，异常时回退官方后台。<br>- 首页和历史统计保持不变。<br>- 完整说明见[版本日志](#版本日志)。 |
 
 GlassOps 适合希望在保留 Komari 简洁体验的同时，进一步强化首页信息密度、节点检索和日常运维能力的用户。
 
@@ -72,6 +72,13 @@ dist/
 ## 版本日志
 
 版本日志按新到旧排列，记录每个版本对实际使用有影响的变化。更细的技术记录见 [CHANGELOG.md](CHANGELOG.md)。
+
+### [v1.0.10](https://github.com/Schmidttt/komari-glassops/releases/tag/v1.0.10) — Komari 1.5.0-fix1 后台兼容
+
+- 新增 Komari 1.5.0-fix1 内嵌后台，支持新版终端工作区、会话恢复和远程文件管理，移除已失效的内置流量定时报告入口。
+- 保留 Komari 1.4.3 对应后台，首页按后端精确版本选择；其他版本继续使用官方后台。
+- 内嵌后台在加载应用代码前再次校验版本，直接打开旧书签、版本查询失败或超时也会回退官方后台。
+- 修复新版文件编辑器侧栏对比度，以及浏览器禁用会话存储时的后台版本选择；保持首页、Ping 和长周期历史统计不变。
 
 ### [v1.0.9](https://github.com/Schmidttt/komari-glassops/releases/tag/v1.0.9) — 长时间范围聚合显示优化
 
@@ -137,9 +144,9 @@ dist/
 
 ## 兼容与验证
 
-- 当前版本重点适配 Komari `1.4.3`；遇到不匹配的内嵌后台版本时会回到官方后台。
+- 内嵌后台分别适配 Komari `1.4.3` 与 `1.5.0-fix1`；其他版本或版本查询失败时使用官方后台。升级后端前须确认 Agent 支持 v2 上报；使用内置流量定时报告的用户应先迁移到对应插件。
 - 发布前会检查代码规范、Vue 类型、生产构建、主题包结构和浏览器交互，并通过 GitHub Actions 复核构建与视觉回归。
-- 自动化使用固定虚构数据，不连接真实节点或账号；不同反向代理、浏览器/GPU 和大规模真实节点环境仍建议自行验证。
+- 浏览器回归使用固定虚构数据，另有隔离真实后端的上传、保存和工作台加载检查，不连接生产节点或账号；不同反向代理、浏览器/GPU 和大规模真实节点环境仍建议自行验证。
 
 ## 本地开发
 
@@ -154,6 +161,14 @@ bun run test:visual
 ```
 
 `bun run build` 会生成 `dist/` 和 `komari-glassops-v<version>-build-<short-sha>.zip`。版本号只维护在 `komari-theme.json`；工作区存在未提交修改时，构建标识会追加 `-dirty`。
+
+隔离后端联调（先构建主题包，提供 Komari `1.5.0-fix1` 可执行文件）：
+
+```bash
+node scripts/verify-komari-admin.mjs /path/to/komari-1.5.0-fix1
+```
+
+脚本临时创建本机测试账号、数据库和离线节点，结束后清理，不验证远程命令执行或文件写入。本机使用 Chrome 时可设置 `PLAYWRIGHT_CHANNEL=chrome`。
 
 应用代码遵循以下分层：
 
