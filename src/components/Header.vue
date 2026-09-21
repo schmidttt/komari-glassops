@@ -111,7 +111,7 @@ async function handleButtonClick(action: string) {
         location.href = adminEntryPath
       }
       catch {
-        location.href = '/admin-app/index.html?__komari_route=%2Fadmin'
+        location.href = `${adminEntryPath}?__komari_route=%2Fadmin`
       }
       break
     }

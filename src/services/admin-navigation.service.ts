@@ -1,11 +1,11 @@
+import { EMBEDDED_ADMIN_PROFILES } from '@/constants/admin'
 import { getSharedApi } from '@/utils/api'
 
-export const EMBEDDED_ADMIN_COMPATIBLE_VERSIONS = ['1.4.3'] as const
+export const EMBEDDED_ADMIN_COMPATIBLE_VERSIONS = EMBEDDED_ADMIN_PROFILES.flatMap(profile => [...profile.versions])
 
-const EMBEDDED_ADMIN_PATH = '/admin-app/index.html'
 const OFFICIAL_ADMIN_PATH = '/admin'
 const VERSION_LOOKUP_TIMEOUT_MS = 2500
-const KOMARI_VERSION_PATTERN = /^v?(\d+\.\d+\.\d+)$/
+const KOMARI_VERSION_PATTERN = /^v?(\d+\.\d+\.\d+(?:-fix1)?)$/
 
 export function normalizeKomariVersion(version: unknown): string | null {
   if (typeof version !== 'string')
@@ -18,7 +18,7 @@ export function normalizeKomariVersion(version: unknown): string | null {
 export function supportsEmbeddedAdmin(version: unknown): boolean {
   const normalized = normalizeKomariVersion(version)
   return normalized !== null
-    && EMBEDDED_ADMIN_COMPATIBLE_VERSIONS.includes(normalized as typeof EMBEDDED_ADMIN_COMPATIBLE_VERSIONS[number])
+    && EMBEDDED_ADMIN_COMPATIBLE_VERSIONS.includes(normalized)
 }
 
 async function lookupBackendVersion(): Promise<unknown> {
@@ -41,6 +41,9 @@ async function lookupBackendVersion(): Promise<unknown> {
 }
 
 export async function resolveAdminEntryPath(): Promise<string> {
-  const version = await lookupBackendVersion()
-  return supportsEmbeddedAdmin(version) ? EMBEDDED_ADMIN_PATH : OFFICIAL_ADMIN_PATH
+  const version = normalizeKomariVersion(await lookupBackendVersion())
+  if (version === null)
+    return OFFICIAL_ADMIN_PATH
+  const profile = EMBEDDED_ADMIN_PROFILES.find(profile => profile.versions.includes(version))
+  return profile ? `/${profile.directory}/index.html` : OFFICIAL_ADMIN_PATH
 }

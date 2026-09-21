@@ -245,7 +245,7 @@ table {
   border-color: var(--border) !important;
 }
 
-aside,
+#root .theme-root > .rt-Grid aside,
 [data-sidebar='sidebar'] {
   border-color: var(--sidebar-border) !important;
   background-color: var(--sidebar) !important;
