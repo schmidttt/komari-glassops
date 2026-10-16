@@ -8,7 +8,7 @@ import { EMBEDDED_ADMIN_PROFILES } from '../src/constants/admin.ts'
 const projectRoot = resolve(import.meta.dirname, '..')
 const sourceRoot = resolve(process.argv[2] || process.env.KOMARI_WEB_DIR || resolve(projectRoot, '..', 'komari-web'))
 const sourceDist = resolve(sourceRoot, 'dist')
-const profile = EMBEDDED_ADMIN_PROFILES.find(profile => profile.versions.includes((process.argv[3] || '1.5.0-fix1')))
+const profile = EMBEDDED_ADMIN_PROFILES.find(profile => profile.versions.includes((process.argv[3] || '1.6.0')))
 if (!profile)
   throw new Error('No verified admin profile for the requested version')
 const assetBase = `/${profile.directory}/`
@@ -139,8 +139,18 @@ const compiledScripts = readdirSync(resolve(targetDir, 'assets'))
   .join('\n')
 if (!compiledScripts.includes('/api/admin/upload') || !compiledScripts.includes('/init'))
   throw new Error('komari-web build does not contain the Komari 1.4.3 chunk upload contract')
-if (profile.directory === 'admin-app-1.5' && compiledScripts.includes('/api/admin/notification/traffic-report'))
+if (profile.directory !== 'admin-app' && compiledScripts.includes('/api/admin/notification/traffic-report'))
   throw new Error('komari-web build still contains removed traffic-report endpoints')
+if (profile.directory === 'admin-app-1.6') {
+  for (const removed of ['/api/admin/clipboard', '/api/admin/settings/xtermjs', '/api/admin/settings/message-sender', '/api/admin/notification/load']) {
+    if (compiledScripts.includes(removed))
+      throw new Error(`komari-web build still contains removed endpoint ${removed}`)
+  }
+  for (const required of ['admin:listNotificationChannels', 'admin:getNotificationChannelConfiguration', 'admin:setNotificationChannelConfiguration']) {
+    if (!compiledScripts.includes(required))
+      throw new Error(`komari-web build is missing notification channel method ${required}`)
+  }
+}
 if (compiledScripts.includes('/api/admin/theme/upload'))
   throw new Error('komari-web build still contains the removed legacy theme upload endpoint')
 

@@ -14,4 +14,9 @@ export const EMBEDDED_ADMIN_PROFILES: readonly {
     versions: ['1.5.0-fix1'],
     commit: '3324844cfa347f18c83435f1ccf5634df7e5b768',
   },
+  {
+    directory: 'admin-app-1.6',
+    versions: ['1.6.0'],
+    commit: 'a96b686bff667d0b04dd0f654842a1caa7aa04c6',
+  },
 ] as const
