@@ -59,6 +59,7 @@ export interface VisualFixtureOptions {
   missingCpuMetricHistory?: boolean
   pingTaskOrdering?: boolean
   backendVersion?: string
+  visitorAuditEnabled?: boolean | null
   nodeCustomTagsVisible?: boolean
   firstNodeTags?: string
   firstNodeTrafficLimit?: number
@@ -511,7 +512,7 @@ export async function installKomariFixture(page: Page, options: VisualFixtureOpt
         sitename: 'Komari Visual Lab',
         theme: 'GlassOps',
         theme_settings: settings,
-        visitor_audit_enabled: false,
+        ...(options.visitorAuditEnabled === null ? {} : { visitor_audit_enabled: options.visitorAuditEnabled ?? false }),
       },
     }),
   }))

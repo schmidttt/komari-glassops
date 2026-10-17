@@ -24,10 +24,17 @@ for (const profile of EMBEDDED_ADMIN_PROFILES) {
     expect(readFileSync(resolve(root, 'admin-entry.js'), 'utf8')).toBe(readFileSync(resolve(import.meta.dirname, '../../scripts/assets/admin-entry.js'), 'utf8'))
     expect(compiled).toContain('/api/admin/upload')
     expect(compiled).not.toContain('/api/admin/theme/upload')
-    if (version === '1.5.0-fix1') {
+    if (version !== '1.4.3') {
       expect(compiled).not.toContain('/api/admin/notification/traffic-report')
       expect(compiled).toContain('request_id')
       expect(compiled).toContain('/file/preview-token')
+    }
+    if (version === '1.6.0') {
+      expect(compiled).toContain('admin:listNotificationChannels')
+      expect(compiled).toContain('admin:getNotificationChannelConfiguration')
+      expect(compiled).toContain('admin:setNotificationChannelConfiguration')
+      for (const removed of ['/api/admin/clipboard', '/api/admin/settings/xtermjs', '/api/admin/settings/message-sender', '/api/admin/notification/load'])
+        expect(compiled).not.toContain(removed)
     }
   })
 
@@ -84,13 +91,13 @@ for (const profile of EMBEDDED_ADMIN_PROFILES) {
 
 test('embedded version selection is exact and unknown releases use official admin', () => {
   expect(normalizeKomariVersion(' v1.5.0-fix1 ')).toBe('1.5.0-fix1')
-  for (const version of ['1.4.3', 'v1.4.3', '1.5.0-fix1', 'v1.5.0-fix1'])
+  for (const version of ['1.4.3', 'v1.4.3', '1.5.0-fix1', 'v1.5.0-fix1', '1.6.0', 'v1.6.0'])
     expect(supportsEmbeddedAdmin(version)).toBe(true)
-  for (const version of ['1.5.0', '1.5.0-fix2', '1.4.3-beta.1', '1.5.0-fix1-beta', '1.6.0', '', null, {}, 'unknown'])
+  for (const version of ['1.5.0', '1.5.1', '1.5.0-fix2', '1.4.3-beta.1', '1.5.0-fix1-beta', '1.6.0-beta', '1.6.1', '', null, {}, 'unknown'])
     expect(supportsEmbeddedAdmin(version)).toBe(false)
 })
 
-for (const backendVersion of ['1.5.0', '1.5.0-fix2', 'unknown']) {
+for (const backendVersion of ['1.5.0', '1.5.1', '1.5.0-fix2', '1.6.1', 'unknown']) {
   test(`header falls back to official admin for ${backendVersion}`, async ({ page }) => {
     await installKomariFixture(page, { hideEarth: true, backendVersion })
     await page.route('**/admin', route => route.fulfill({ contentType: 'text/html', body: '<title>Official admin</title>' }))

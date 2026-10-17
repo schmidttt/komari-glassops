@@ -1,0 +1,6 @@
+import{B as e,g as C,i as g,P as E,R as y,C as N,aa as T,A as x,q as w}from"./entry-index-DFOy5rJF.js";import{p as O}from"./chunk-text-DbA_CZPn.js";import{t,v as b}from"./chunk-layout.props-lEV5TZg8.js";const P={content:{type:"ReactNode",required:!0},width:t.width,minWidth:t.minWidth,maxWidth:{...t.maxWidth,default:"360px"}},R=e.forwardRef((a,o)=>{const{children:n,className:r,open:i,defaultOpen:s,onOpenChange:l,delayDuration:c,disableHoverableContent:d,content:m,container:p,forceMount:f,...u}=b(a,P),h={open:i,defaultOpen:s,onOpenChange:l,delayDuration:c,disableHoverableContent:d};return e.createElement(C,{...h},e.createElement(g,{asChild:!0},n),e.createElement(E,{container:p,forceMount:f},e.createElement(y,{asChild:!0},e.createElement(N,{sideOffset:4,collisionPadding:10,...u,asChild:!1,ref:o,className:T("rt-TooltipContent",r)},e.createElement(O,{as:"p",className:"rt-TooltipText",size:"1"},m),e.createElement(x,{className:"rt-TooltipArrow"})))))});R.displayName="Tooltip";/**
+ * @license lucide-react v0.511.0 - ISC
+ *
+ * This source code is licensed under the ISC license.
+ * See the LICENSE file in the root directory of this source tree.
+ */const W=[["path",{d:"m12 14 4-4",key:"9kzdfg"}],["path",{d:"M3.34 19a10 10 0 1 1 17.32 0",key:"19p75a"}]],M=w("gauge",W);export{M as G,R as e};

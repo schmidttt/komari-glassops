@@ -47,7 +47,7 @@ const pageStart = computed(() => total.value === 0 ? 0 : (page.value - 1) * limi
 const pageEnd = computed(() => Math.min(total.value, page.value * limit.value))
 const visitorAuditStatus = computed(() => {
   if (!appStore.visitorAuditSupported)
-    return { icon: 'tabler:clock-pause', tone: 'text-warning', text: '当前核心尚未发布访客审计接口；升级到包含 PR #602 的版本后自动启用此视图。' }
+    return { icon: 'tabler:clock-pause', tone: 'text-warning', text: '当前核心未提供访客审计能力（Komari 1.6.0 已移除）；管理员操作日志仍可查看。' }
   if (!appStore.visitorAuditEnabled)
     return { icon: 'tabler:shield-off', tone: 'text-warning', text: '核心已支持访客审计，但 visitor_audit_enabled 当前关闭。已有记录仍可查看。' }
   return { icon: 'tabler:shield-check', tone: 'text-success', text: '访客审计已启用；IP 与 User-Agent 由服务端可信记录，前端只提交受限操作摘要。' }
@@ -134,7 +134,7 @@ async function verifyAuditExportPermission(view: AuditView): Promise<boolean> {
     return false
   }
   if (view === 'visitor' && !appStore.visitorAuditSupported) {
-    window.$message?.warning('当前核心尚未支持访客审计筛选。')
+    window.$message?.warning('当前核心未提供访客审计筛选。')
     return false
   }
   return true
@@ -528,7 +528,7 @@ onMounted(() => {
           </tbody>
         </table>
         <div v-else class="py-10 text-center text-sm text-muted-foreground">
-          {{ logView === 'visitor' && !appStore.visitorAuditSupported ? '等待核心发布访客审计能力。' : '暂无审计日志。' }}
+          {{ logView === 'visitor' && !appStore.visitorAuditSupported ? '当前核心未提供访客审计能力。' : '暂无审计日志。' }}
         </div>
       </Spinner>
     </CardX>

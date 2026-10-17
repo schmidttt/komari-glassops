@@ -3,22 +3,22 @@
 面向 [Komari Monitor](https://github.com/komari-monitor/komari) 的社区维护型毛玻璃运维主题，重点优化宽屏信息密度、节点监控效率、地球视图和深浅色体验。
 
 [![Release](https://img.shields.io/github/v/release/Schmidttt/komari-glassops?style=flat-square&label=Release)](https://github.com/Schmidttt/komari-glassops/releases/latest)
-[![Komari](https://img.shields.io/badge/Komari-1.5.0--fix1-2f81f7?style=flat-square)](https://github.com/komari-monitor/komari/releases/tag/1.5.0-fix1)
+[![Komari](https://img.shields.io/badge/Komari-1.6.0-2f81f7?style=flat-square)](https://github.com/komari-monitor/komari/releases/tag/1.6.0)
 [![License](https://img.shields.io/github/license/Schmidttt/komari-glassops?style=flat-square)](LICENSE)
 
 [下载最新版](https://github.com/Schmidttt/komari-glassops/releases/latest) · [查看特色](#核心特色) · [安装主题](#安装与更新) · [版本日志](#版本日志)
 
-![Komari GlassOps v1.0.10 暗色首页预览](docs/preview-v1.0.10.png)
+![Komari GlassOps v1.0.11 暗色首页预览](docs/preview-v1.0.11.png)
 
 ## 当前版本
 
-| 项目     | 说明                                                                                                                                                                                                 |
-| -------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| 最新版本 | `v1.0.10`                                                                                                                                                                                            |
-| 重点适配 | Komari `1.5.0-fix1`，保留 `1.4.3` 后台                                                                                                                                                               |
-| 默认外观 | 暗色毛玻璃                                                                                                                                                                                           |
-| 安装方式 | 在 Komari 后台导入主题 ZIP                                                                                                                                                                           |
-| 版本概要 | - 新增新版终端与文件管理后台。<br>- 保留 1.4.3 后台并按版本自动选择。<br>- 直接打开后台链接也会检查兼容性，异常时回退官方后台。<br>- 首页和历史统计保持不变。<br>- 完整说明见[版本日志](#版本日志)。 |
+| 项目     | 说明                                                                                                                                                                                                |
+| -------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 最新版本 | `v1.0.11`                                                                                                                                                                                           |
+| 重点适配 | Komari `1.6.0`，保留 `1.4.3` / `1.5.0-fix1` 后台                                                                                                                                                    |
+| 默认外观 | 暗色毛玻璃                                                                                                                                                                                          |
+| 安装方式 | 在 Komari 后台导入主题 ZIP                                                                                                                                                                          |
+| 版本概要 | - 新增 Komari 1.6.0 通知渠道与管理后台。<br>- 保留两套旧版后台并按版本自动选择。<br>- 修正访客审计不可用提示，保留管理员日志。<br>- 首页和历史统计保持不变。<br>- 完整说明见[版本日志](#版本日志)。 |
 
 GlassOps 适合希望在保留 Komari 简洁体验的同时，进一步强化首页信息密度、节点检索和日常运维能力的用户。
 
@@ -72,6 +72,13 @@ dist/
 ## 版本日志
 
 版本日志按新到旧排列，记录每个版本对实际使用有影响的变化。更细的技术记录见 [CHANGELOG.md](CHANGELOG.md)。
+
+### [v1.0.11](https://github.com/Schmidttt/komari-glassops/releases/tag/v1.0.11) — Komari 1.6.0 与旧版后台兼容
+
+- 新增 Komari 1.6.0 内嵌后台，跟随新版通知渠道、登录入口和终端工作区变化。
+- 保留 1.4.3 与 1.5.0-fix1 后台，按精确版本选择；未知版本、查询失败和旧书签继续安全回退官方后台。
+- 修正新版核心移除访客审计后的提示，保留旧核心访客审计开关和管理员日志。
+- 新后台保存主题设置时合并最新完整配置，保留首页 Ping 等额外设置；公开监控与历史统计语义保持不变。
 
 ### [v1.0.10](https://github.com/Schmidttt/komari-glassops/releases/tag/v1.0.10) — Komari 1.5.0-fix1 后台兼容
 
