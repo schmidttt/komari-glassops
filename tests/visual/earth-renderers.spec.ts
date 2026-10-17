@@ -1316,7 +1316,9 @@ test('cobe planets follow fixed globe-space orbits with rear-side occlusion', as
       return { depth, visible, visibility: style.visibility, opacity: Number(style.opacity) }
     }))
     expect(states.every(state => Number.isFinite(state.depth))).toBe(true)
-    expect(states.every(state => state.depth >= 0
+    // The diagnostic depth is rounded to four decimals; a tiny negative depth
+    // becomes -0.0000. Preserve that sign when checking the rear hemisphere.
+    expect(states.every(state => state.depth >= 0 && !Object.is(state.depth, -0)
       ? state.visible && state.visibility === 'visible' && state.opacity >= 0
       : !state.visible && state.visibility === 'hidden' && state.opacity === 0)).toBe(true)
     return states
