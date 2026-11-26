@@ -115,7 +115,7 @@ const homeTools = computed<HomeToolOption[]>(() => {
     return []
 
   const tools: HomeToolOption[] = [
-    { key: 'nodeCompare', label: '对比', icon: 'tabler:columns-3', description: '最多四台节点实时横向对比' },
+    { key: 'nodeCompare', label: '对比', icon: 'tabler:columns-3', description: '实时与线路对比' },
   ]
   if (!appStore.privateFeaturesAllowed)
     return tools
@@ -532,9 +532,9 @@ const nodeCardGridClass = computed(() => {
               </div>
             </div>
             <div class="search flex min-w-0 flex-nowrap gap-2 items-center justify-end pointer-events-auto">
-              <div v-if="homeTools.length && appStore.homeAdvancedToolsVisible" class="flex h-8 items-center gap-1 rounded-md bg-background/50 p-0.5 backdrop-blur-xs">
+              <div v-if="homeTools.some(tool => tool.key !== 'nodeCompare') && appStore.homeAdvancedToolsVisible" class="home-tool-actions flex h-8 items-center gap-1 rounded-md bg-background/50 p-0.5 backdrop-blur-xs">
                 <Button
-                  v-for="tool in homeTools" :key="tool.key"
+                  v-for="tool in homeTools.filter(item => item.key !== 'nodeCompare')" :key="tool.key"
                   variant="ghost" size="icon"
                   class="size-7 rounded-sm text-muted-foreground shadow-none hover:bg-background/60"
                   :class="[activeHomeTool === tool.key ? '!text-selection !bg-background' : '']"
@@ -547,6 +547,16 @@ const nodeCardGridClass = computed(() => {
                 </Button>
               </div>
 
+              <Button
+                v-if="homeTools.some(tool => tool.key === 'nodeCompare')"
+                variant="outline" size="icon" aria-label="节点对比" title="节点对比"
+                class="size-8 shrink-0 border-none bg-background/50 backdrop-blur-xs shadow-none hover:bg-background/60 rounded-md"
+                :class="[activeHomeTool === 'nodeCompare' ? '!text-selection !bg-background' : '']"
+                :aria-pressed="activeHomeTool === 'nodeCompare'"
+                @click="toggleHomeTool('nodeCompare')"
+              >
+                <Icon icon="tabler:columns-3" :width="14" :height="14" />
+              </Button>
               <Button
                 variant="outline" size="icon" aria-label="卡片视图"
                 class="w-8 h-8 border-none bg-background/50 backdrop-blur-xs shadow-none hover:bg-background/60 rounded-md"
@@ -751,7 +761,7 @@ const nodeCardGridClass = computed(() => {
     gap: 0.375rem;
   }
 
-  .search > :first-child {
+  .home-tool-actions {
     display: none;
   }
 }

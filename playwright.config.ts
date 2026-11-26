@@ -1,6 +1,8 @@
 import process from 'node:process'
 import { defineConfig } from '@playwright/test'
 
+const webkitCompatibility = process.env.PLAYWRIGHT_COMPAT_BROWSER === 'webkit'
+
 export default defineConfig({
   testDir: './tests/visual',
   outputDir: 'test-results/artifacts',
@@ -30,10 +32,10 @@ export default defineConfig({
   },
   projects: [
     {
-      name: 'chromium',
+      name: webkitCompatibility ? 'webkit' : 'chromium',
       use: {
-        browserName: 'chromium',
-        channel: process.env.PLAYWRIGHT_CHANNEL || undefined,
+        browserName: webkitCompatibility ? 'webkit' : 'chromium',
+        channel: webkitCompatibility ? undefined : process.env.PLAYWRIGHT_CHANNEL || undefined,
       },
     },
   ],
