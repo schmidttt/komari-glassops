@@ -326,7 +326,7 @@ async function loadMetricPingPayload(nodeUuid: string): Promise<{
   const metricTaskIds = new Set(metricRecords.map(record => record.task_id))
   const metricLossTaskIds = new Set(metricLossPoints.map(point => point.taskId))
   if (
-    !metricRecords.length
+    (!metricRecords.length && !metricLossPoints.length)
     || [...metricTaskIds].some(taskId => !metricLossTaskIds.has(taskId))
   ) {
     return null
@@ -340,7 +340,7 @@ async function loadMetricPingPayload(nodeUuid: string): Promise<{
 
   for (const series of normalizeMetricSeriesList(
     metricsResult.status === 'fulfilled' ? metricsResult.value.series : [],
-  ).filter(isPingMetric)) {
+  ).filter(series => isPingMetric(series) || series.metric_key === PING_LOSS_METRIC)) {
     const taskId = normalizeMetricTaskId(pingTaskId(series))
     if (!taskId || taskMap.has(taskId))
       continue
@@ -691,28 +691,37 @@ function getTaskColor(taskId: number): string {
   return chartColors[safeIndex]!
 }
 
-// 最新值统计（从服务端 tasks 获取，保持颜色顺序）
+// The backend summary's latest value is the last successful probe, which can precede a loss.
 const latestValues = computed(() => {
-  if (!tasks.value.length)
-    return []
-
-  const latestMap = new Map<number, number | null>()
-  for (const task of tasks.value) {
-    for (let i = remoteData.value.length - 1; i >= 0; i--) {
-      const rec = remoteData.value[i]
-      if (rec && rec.task_id === task.id && rec.value >= 0) {
-        latestMap.set(task.id, rec.value)
-        break
-      }
-    }
+  const newestByTask = new Map<number, PingRecord>()
+  const successByTask = new Map<number, PingRecord>()
+  for (const record of remoteData.value) {
+    newestByTask.set(record.task_id, record)
+    if (record.value >= 0)
+      successByTask.set(record.task_id, record)
   }
+  const latestLossByTask = new Map((remoteLossData.value ?? []).map(point => [point.taskId, point]))
 
   return tasks.value.map((task, idx) => {
-    const safeIdx = Math.max(0, idx % chartColors.length)
+    const newest = newestByTask.get(task.id)
+    const lastSuccess = successByTask.get(task.id)
+    const lastLossSample = latestLossByTask.get(task.id)
+    const metric = remoteLossData.value !== null
+    const aggregated = Boolean(metricAggregation.value)
+    const newestIsLoss = metric
+      ? lastLossSample && lastLossSample.value > 0 && (!newest || Date.parse(lastLossSample.time) >= Date.parse(newest.time))
+      : newest && newest.value < 0
+    const sample = newestIsLoss ? (metric ? lastLossSample : newest) : newest
+    const latestLabel = newestIsLoss
+      ? aggregated ? '最近时段丢包' : '丢包'
+      : newest && newest.value >= 0 ? `${Math.round(newest.value)} ms` : '暂无数据'
     return {
       ...task,
-      latestValue: latestMap.get(task.id) ?? null,
-      color: chartColors[safeIdx]!,
+      latestLabel,
+      latestTime: sample?.time,
+      latestIsLoss: Boolean(newestIsLoss),
+      lastSuccessfulProbe: !aggregated && newestIsLoss ? lastSuccess : undefined,
+      color: chartColors[idx % chartColors.length]!,
     }
   })
 })
@@ -1645,9 +1654,9 @@ onBeforeUnmount(() => {
                         <span class="text-muted-foreground">平均</span>
                         <span class="font-medium">{{ Math.round(task.avg) }} ms</span>
                       </template>
-                      <template v-if="task.latest !== undefined">
-                        <span class="text-muted-foreground">最新</span>
-                        <span class="font-medium">{{ Math.round(task.latest) }} ms</span>
+                      <template v-if="task.lastSuccessfulProbe">
+                        <span class="text-muted-foreground">上次成功</span>
+                        <span class="font-medium">{{ Math.round(task.lastSuccessfulProbe.value) }} ms · {{ dayjs(task.lastSuccessfulProbe.time).format('M/D HH:mm:ss') }}</span>
                       </template>
                       <template v-if="task.p50 !== undefined">
                         <span class="text-muted-foreground">P50</span>
@@ -1684,6 +1693,13 @@ onBeforeUnmount(() => {
                     </div>
                   </template>
                 </HoverInfo>
+              </div>
+              <div class="mt-1.5 flex flex-wrap items-baseline gap-1.5 text-xs">
+                <span class="text-muted-foreground">{{ metricAggregation ? '最近区间' : '时段内最新' }}</span>
+                <span :class="task.latestIsLoss ? 'font-semibold text-destructive' : 'font-medium'">{{ task.latestLabel }}</span>
+                <time v-if="task.latestTime" :datetime="task.latestTime" class="text-[10px] text-muted-foreground">
+                  {{ dayjs(task.latestTime).format('HH:mm:ss') }}
+                </time>
               </div>
               <div class="mt-2 grid grid-cols-3 gap-1.5">
                 <div class="min-w-0 rounded-md bg-slate-500/6 px-1.5 py-1">

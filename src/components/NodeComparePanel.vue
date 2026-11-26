@@ -2,9 +2,10 @@
 import type { NodeData } from '@/stores/nodes'
 import { Icon } from '@iconify/vue'
 import { useStorageAsync } from '@vueuse/core'
-import { computed, ref, watch } from 'vue'
+import { computed, defineAsyncComponent, ref, watch } from 'vue'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { useAppStore } from '@/stores/app'
 import { formatBytesPerSecondWithConfig, formatBytesWithConfig, formatUptimeWithFormat } from '@/utils/helper'
 import { getDiskPercentage, getMemoryPercentage, getTrafficUsed, getTrafficUsedPercentage, hasTrafficLimit } from '@/utils/nodeMetricsHelper'
@@ -22,6 +23,7 @@ const props = defineProps<{
   nodes: NodeData[]
 }>()
 
+const PingComparisonPanel = defineAsyncComponent(() => import('@/components/PingComparisonPanel.vue'))
 const MAX_COMPARE_NODES = 4
 const appStore = useAppStore()
 const searchText = ref('')
@@ -147,47 +149,64 @@ watch(() => props.nodes.map(node => node.uuid), (uuids) => {
       </button>
     </div>
 
-    <div v-if="selectedNodes.length" class="overflow-x-auto rounded-md bg-background/35 p-1">
-      <div class="grid min-w-max gap-px overflow-hidden rounded-sm" :style="comparisonGridStyle">
-        <div class="bg-background/65 px-3 py-2 text-xs font-semibold text-muted-foreground">
+    <Tabs default-value="snapshot" class="min-w-0">
+      <TabsList aria-label="对比视图" class="mb-3">
+        <TabsTrigger value="snapshot">
+          <Icon icon="tabler:columns-3" class="h-4 w-4" />
           实时快照
-        </div>
-        <div v-for="node in selectedNodes" :key="`header-${node.uuid}`" class="min-w-0 bg-background/65 px-3 py-2">
-          <div class="flex items-center gap-1.5">
-            <span class="size-2 rounded-full" :class="node.online ? 'bg-success' : 'bg-destructive'" />
-            <span class="truncate text-sm font-semibold">{{ node.name }}</span>
+        </TabsTrigger>
+        <TabsTrigger value="network">
+          <Icon icon="tabler:activity" class="h-4 w-4" />
+          线路对比
+        </TabsTrigger>
+      </TabsList>
+      <TabsContent value="snapshot" class="min-w-0">
+        <div v-if="selectedNodes.length" class="overflow-x-auto rounded-md bg-background/35 p-1">
+          <div class="grid min-w-max gap-px overflow-hidden rounded-sm" :style="comparisonGridStyle">
+            <div class="bg-background/65 px-3 py-2 text-xs font-semibold text-muted-foreground">
+              实时快照
+            </div>
+            <div v-for="node in selectedNodes" :key="`header-${node.uuid}`" class="min-w-0 bg-background/65 px-3 py-2">
+              <div class="flex items-center gap-1.5">
+                <span class="size-2 rounded-full" :class="node.online ? 'bg-success' : 'bg-destructive'" />
+                <span class="truncate text-sm font-semibold">{{ node.name }}</span>
+              </div>
+            </div>
+
+            <template v-for="metric in compareMetrics" :key="metric.key">
+              <div class="bg-background/45 px-3 py-2 text-xs font-medium text-muted-foreground">
+                {{ metric.label }}
+              </div>
+              <div v-for="node in selectedNodes" :key="`${metric.key}-${node.uuid}`" class="min-w-0 bg-background/45 px-3 py-2">
+                <div class="break-words text-xs tabular-nums" :title="metric.value(node)">
+                  {{ metric.value(node) }}
+                </div>
+                <div v-if="metric.percentage?.(node) != null" class="mt-1.5 h-1 overflow-hidden rounded-full bg-slate-500/10">
+                  <div
+                    class="h-full rounded-full bg-selection/70"
+                    :style="{ width: `${clampPercentage(metric.percentage?.(node) ?? 0)}%` }"
+                  />
+                </div>
+              </div>
+            </template>
           </div>
         </div>
 
-        <template v-for="metric in compareMetrics" :key="metric.key">
-          <div class="bg-background/45 px-3 py-2 text-xs font-medium text-muted-foreground">
-            {{ metric.label }}
+        <div v-else class="space-y-3 py-7 text-center text-sm text-muted-foreground">
+          <p>选择 2 至 4 台节点进行横向对比</p>
+          <div class="mx-auto flex max-w-3xl flex-wrap justify-center gap-1.5">
+            <span
+              v-for="metric in compareMetrics" :key="`preview-${metric.key}`"
+              class="rounded-sm bg-background/45 px-2 py-1 text-xs"
+            >
+              {{ metric.label }}
+            </span>
           </div>
-          <div v-for="node in selectedNodes" :key="`${metric.key}-${node.uuid}`" class="min-w-0 bg-background/45 px-3 py-2">
-            <div class="break-words text-xs tabular-nums" :title="metric.value(node)">
-              {{ metric.value(node) }}
-            </div>
-            <div v-if="metric.percentage?.(node) != null" class="mt-1.5 h-1 overflow-hidden rounded-full bg-slate-500/10">
-              <div
-                class="h-full rounded-full bg-selection/70"
-                :style="{ width: `${clampPercentage(metric.percentage?.(node) ?? 0)}%` }"
-              />
-            </div>
-          </div>
-        </template>
-      </div>
-    </div>
-
-    <div v-else class="space-y-3 py-7 text-center text-sm text-muted-foreground">
-      <p>选择 2 至 4 台节点进行横向对比</p>
-      <div class="mx-auto flex max-w-3xl flex-wrap justify-center gap-1.5">
-        <span
-          v-for="metric in compareMetrics" :key="`preview-${metric.key}`"
-          class="rounded-sm bg-background/45 px-2 py-1 text-xs"
-        >
-          {{ metric.label }}
-        </span>
-      </div>
-    </div>
+        </div>
+      </TabsContent>
+      <TabsContent value="network" class="min-w-0">
+        <PingComparisonPanel :nodes="selectedNodes" />
+      </TabsContent>
+    </Tabs>
   </div>
 </template>

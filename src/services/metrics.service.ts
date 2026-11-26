@@ -52,6 +52,8 @@ function normalizeMetricQueryParams(params: MetricQueryParams): MetricQueryParam
     ...params,
     hours: normalizeHours(params.hours),
     max_points: normalizeMaxPoints(params.max_points ?? params.downsample_points),
+    aggregation: params.aggregation ?? params.downsample_algorithm ?? params.algorithm,
+    aggregation_by_metric: params.aggregation_by_metric ?? params.downsample_algorithm_by_metric ?? params.algorithm_by_metric,
   }
   delete normalizedParams.downsample
   delete normalizedParams.server_downsample
@@ -100,6 +102,8 @@ export function getQueryMetricsRequestKey(params: MetricQueryParams): string {
     cachePart(params.end ?? params.end_time),
     cachePart(params.max_points ?? params.downsample_points),
     cachePart(params.aggregation ?? params.downsample_algorithm ?? params.algorithm),
+    cachePart(params.aggregation_by_metric ?? params.downsample_algorithm_by_metric ?? params.algorithm_by_metric),
+    cachePart(params.max_points_by_metric ?? params.points_by_metric),
     cachePart(params.tags),
     cachePart(params.downsample ?? params.server_downsample),
     cachePart(params.fill_empty),

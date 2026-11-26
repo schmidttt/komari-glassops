@@ -69,10 +69,10 @@ const baseColumns: ColumnConfig[] = [
   { key: 'name', label: '节点', width: 'minmax(180px, 0.85fr)', sortable: true },
   { key: 'metadata', label: '信息', width: 'minmax(240px, 1.1fr)', sortable: false },
   { key: 'uptime', label: '运行时间', width: '116px', sortable: true },
-  { key: 'cpu', label: 'CPU', width: '100px', sortable: false },
-  { key: 'mem', label: '内存', width: '100px', sortable: false },
-  { key: 'disk', label: '硬盘', width: '100px', sortable: false },
-  { key: 'traffic', label: '流量', width: '104px', sortable: false },
+  { key: 'cpu', label: 'CPU', width: '100px', sortable: true },
+  { key: 'mem', label: '内存', width: '100px', sortable: true },
+  { key: 'disk', label: '硬盘', width: '100px', sortable: true },
+  { key: 'traffic', label: '流量', width: '104px', sortable: true },
   { key: 'rate', label: '速率', width: '88px', sortable: true },
 ]
 
@@ -90,6 +90,7 @@ const { getNodeProviderMetadata } = useNodeProviderMetadata({
   geoPermission: 'providerGeoLookup',
 })
 
+const resourceSortKeys = new Set(['cpu', 'mem', 'disk', 'traffic'])
 const sortKey = ref<string>('')
 const sortDir = ref<1 | -1>(1)
 
@@ -109,8 +110,29 @@ function handleSort(col: ColumnConfig) {
   }
   else {
     sortKey.value = col.key
-    sortDir.value = 1
+    sortDir.value = resourceSortKeys.has(col.key) ? -1 : 1
   }
+}
+
+function resourceValue(node: NodeData, key: string): number | null {
+  if (key === 'traffic')
+    return hasTrafficLimit(node) ? getTrafficUsed(node) / node.traffic_limit : null
+  if (!node.online)
+    return null
+  switch (key) {
+    case 'cpu': return Number.isFinite(node.cpu) ? node.cpu : null
+    case 'mem': return node.mem_total > 0 && Number.isFinite(node.ram) ? node.ram / node.mem_total : null
+    case 'disk': return node.disk_total > 0 && Number.isFinite(node.disk) ? node.disk / node.disk_total : null
+    default: return null
+  }
+}
+
+function compareResource(a: NodeData, b: NodeData, key: string, direction: number): number {
+  const aValue = resourceValue(a, key)
+  const bValue = resourceValue(b, key)
+  if (aValue === null || bValue === null)
+    return Number(aValue === null) - Number(bValue === null)
+  return direction * (aValue - bValue)
 }
 
 const sortedNodes = computed(() => {
@@ -138,10 +160,11 @@ const sortedNodes = computed(() => {
         const vb = (b.os || '').toLowerCase()
         return dir * (va < vb ? -1 : va > vb ? 1 : 0)
       }
-      case 'cpu': return dir * ((a.cpu ?? 0) - (b.cpu ?? 0))
-      case 'mem': return dir * ((a.ram ?? 0) / (a.mem_total || 1) - (b.ram ?? 0) / (b.mem_total || 1))
-      case 'disk': return dir * ((a.disk ?? 0) / (a.disk_total || 1) - (b.disk ?? 0) / (b.disk_total || 1))
+      case 'cpu':
+      case 'mem':
+      case 'disk':
       case 'traffic':
+        return compareResource(a, b, key, dir)
       case 'rate':
         return dir * (getRealtimeTotalSpeed(a) - getRealtimeTotalSpeed(b))
       default: return 0
@@ -397,12 +420,19 @@ function buildNodeMetadataItems(node: NodeData): NodeMetadataItem[] {
       <div class="grid px-2.5 py-2 bg-background/70 rounded-lg backdrop-blur-sm gap-2" :style="gridStyle">
         <div
           v-for="col in columns" :key="col.key"
-          :class="[col.sortable ? 'cursor-pointer select-none' : '', ['status', 'os'].includes(col.key) ? 'text-center' : 'text-left']"
-          @click="handleSort(col)"
+          :class="['status', 'os'].includes(col.key) ? 'text-center' : 'text-left'"
         >
-          <span class="text-[11px] font-medium tracking-wide text-foreground/70">
-            {{ col.label }}{{ col.sortable && sortKey === col.key ? (sortDir === 1 ? ' ↑' : ' ↓') : '' }}
-          </span>
+          <button
+            v-if="col.sortable" type="button"
+            class="inline-flex items-center gap-1 rounded text-[11px] font-medium tracking-wide text-foreground/70 hover:text-foreground focus-visible:outline-2 focus-visible:outline-selection"
+            :aria-pressed="sortKey === col.key"
+            :aria-label="`按${col.key === 'traffic' ? '流量配额使用率' : col.label}排序${sortKey === col.key ? (sortDir === 1 ? '（升序）' : '（降序）') : ''}`"
+            @click="handleSort(col)"
+          >
+            {{ col.label }}
+            <span v-if="sortKey === col.key" aria-hidden="true">{{ sortDir === 1 ? '↑' : '↓' }}</span>
+          </button>
+          <span v-else class="text-[11px] font-medium tracking-wide text-foreground/70">{{ col.label }}</span>
         </div>
       </div>
 

@@ -225,6 +225,18 @@ const availableMetricKeys = shallowRef<Set<string>>(new Set())
 const pingTasks = shallowRef<PingTaskInfo[]>([])
 const metricAggregation = computed(() => resolveMetricAggregationInfo(rawMetricSeries.value))
 const historyMetricAggregation = computed(() => metricData.value ? metricAggregation.value : null)
+const networkMetricSeries = computed(() => rawMetricSeries.value.filter(series => series.metric_key === 'net.in.rate' || series.metric_key === 'net.out.rate'))
+const networkMetricAggregation = computed(() => resolveMetricAggregationInfo(networkMetricSeries.value))
+const networkAggregationLabel = computed(() => {
+  const aggregated = networkMetricSeries.value.filter(series => series.downsampled && series.points.length)
+  if (!aggregated.length)
+    return ''
+  if (aggregated.every(series => series.downsample_algorithm === 'max'))
+    return '区间峰值'
+  if (aggregated.every(series => series.downsample_algorithm === 'avg'))
+    return '区间均值'
+  return '区间聚合'
+})
 const pingMetricAggregation = computed(() => resolveMetricAggregationInfo(
   rawMetricSeries.value.filter(series => series.metric_key === 'ping.latency_ms' || series.metric_key === 'ping.loss'),
 ))
@@ -566,6 +578,7 @@ async function loadMetricHistoryRecords(params: Pick<MetricQueryParams, 'hours' 
     fill_empty: true,
     max_points: METRIC_HISTORY_MAX_POINTS,
     aggregation: 'avg',
+    aggregation_by_metric: { 'net.in.rate': 'max', 'net.out.rate': 'max' },
   })
 
   const series = normalizeMetricSeriesList(result.series)
@@ -872,16 +885,16 @@ function formatTime(time: string, showDate: boolean): string {
   return date.format('HH:mm')
 }
 
-function formatTimeForTooltip(time: string, hours: number): string {
-  if (historyMetricAggregation.value?.isDaily)
+function formatTimeForTooltip(time: string, hours: number, aggregation = historyMetricAggregation.value): string {
+  if (aggregation?.isDaily)
     return `${formatUtcMetricBucketDate(time, true)} · 日聚合`
 
   const date = dayjs(time)
   const formatted = hours < 24
     ? date.format('HH:mm:ss')
     : date.format('MM/DD HH:mm')
-  return historyMetricAggregation.value
-    ? `${formatted} · ${historyMetricAggregation.value.label}`
+  return aggregation
+    ? `${formatted} · ${aggregation.label}`
     : formatted
 }
 
@@ -1224,14 +1237,14 @@ const networkChartOption = computed(() => ({
       if (!record)
         return ''
 
-      const timeStr = formatTimeForTooltip(record.time, effectiveHistoryHours.value)
+      const timeStr = [formatTimeForTooltip(record.time, effectiveHistoryHours.value, networkMetricAggregation.value), networkAggregationLabel.value].filter(Boolean).join(' · ')
       let html = `<div style="font-weight:600;margin-bottom:6px;color:${chartThemeColors.value.textSecondary}">${timeStr}</div>`
       html += '<div style="display:flex;flex-direction:column;gap:4px">'
 
       for (const item of p) {
         const colorDot = `<span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:${item.color};margin-right:8px;flex-shrink:0"></span>`
         const label = item.seriesName === '下载' ? '↓ 下载' : '↑ 上传'
-        html += `<div style="display:flex;align-items:center">${colorDot}<span>${label}</span><span style="margin-left:auto;font-weight:600;margin-left:16px">${formatBytes(item.value)}/s</span></div>`
+        html += `<div style="display:flex;align-items:center">${colorDot}<span>${label}</span><span style="margin-left:auto;font-weight:600;margin-left:16px">${typeof item.value === 'number' && Number.isFinite(item.value) ? `${formatBytes(item.value)}/s` : '—'}</span></div>`
       }
       html += '</div>'
       return html
@@ -1250,7 +1263,7 @@ const networkChartOption = computed(() => ({
   xAxis: baseXAxisConfig.value,
   yAxis: {
     ...baseYAxisConfig.value,
-    name: '速度',
+    name: '速度 /s',
     nameTextStyle: { color: chartThemeColors.value.textSecondary, padding: [0, 40, 0, 0] },
     axisLabel: {
       ...baseYAxisConfig.value.axisLabel,
@@ -1261,7 +1274,7 @@ const networkChartOption = computed(() => ({
     {
       name: '下载',
       type: 'line',
-      data: chartData.value.map(r => r.net_in ?? 0),
+      data: chartData.value.map(r => r.net_in ?? null),
 
       showSymbol: false,
       lineStyle: { width: 1.5, color: chartColors.quinary, cap: 'round' as const },
@@ -1269,7 +1282,7 @@ const networkChartOption = computed(() => ({
     {
       name: '上传',
       type: 'line',
-      data: chartData.value.map(r => r.net_out ?? 0),
+      data: chartData.value.map(r => r.net_out ?? null),
 
       showSymbol: false,
       lineStyle: { width: 1.5, color: chartColors.quaternary, cap: 'round' as const },
@@ -1641,7 +1654,8 @@ onMounted(() => {
           <Icon icon="tabler:calendar-stats" width="13" height="13" />
           {{ visibleMetricAggregation.label }}
         </span>
-        <span>每个点表示该统计区间的平均值；日期按统计桶显示。</span>
+        <span v-if="networkAggregationLabel === '区间峰值'">网络速率显示区间峰值，其余指标按各自口径显示。日期按统计桶显示。</span>
+        <span v-else>每个点表示该统计区间的平均值；日期按统计桶显示。</span>
       </div>
     </div>
 
@@ -1724,7 +1738,7 @@ onMounted(() => {
         <!-- 网络卡片 -->
         <CardX v-if="isChartCardEnabled('network')" size="small" class="bg-background/50 border-none hover:bg-background transition-all rounded-md" :style="getChartCardStyle('network')">
           <template #header>
-            <MetricChartHeader title="实时网络" icon="tabler:network" tone="sky">
+            <MetricChartHeader :title="isRealtime ? '实时网络' : '网络速率'" icon="tabler:network" tone="sky" :subtitle="networkAggregationLabel">
               <div class="text-xs flex gap-2 items-baseline">
                 <span class="flex flex-row items-center justify-center gap-0.5">
                   <Icon icon="tabler:chevron-up" width="12" height="12" />

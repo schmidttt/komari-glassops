@@ -3,7 +3,7 @@ import { randomBytes } from 'node:crypto'
 import { mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync } from 'node:fs'
 import { createServer } from 'node:net'
 import { tmpdir } from 'node:os'
-import { resolve } from 'node:path'
+import { basename, resolve } from 'node:path'
 import process from 'node:process'
 import { setTimeout as delay } from 'node:timers/promises'
 import { chromium, expect, request } from '@playwright/test'
@@ -12,15 +12,17 @@ import { EMBEDDED_ADMIN_PROFILES } from '../src/constants/admin.ts'
 // This check creates a disposable local account/database; it never uses a live site.
 const binary = process.argv[2]
 if (!binary)
-  throw new Error('Usage: node scripts/verify-komari-admin.mjs /path/to/komari [1.6.0|1.5.0-fix1|1.4.3]')
+  throw new Error('Usage: node scripts/verify-komari-admin.mjs /path/to/komari [1.6.2|1.6.0|1.5.0-fix1|1.4.3] [previous-theme.zip]')
 const expectedVersion = process.argv[3] || '1.6.0'
 const profile = EMBEDDED_ADMIN_PROFILES.find(item => item.versions.includes(expectedVersion))
-if (!profile)
+const official = expectedVersion === '1.6.2'
+const previousTheme = process.argv[4]
+if (!profile && !official)
   throw new Error('The requested backend has no verified admin profile')
 const modern = expectedVersion === '1.6.0'
-const hasWorkbench = expectedVersion !== '1.4.3'
-const adminRoute = modern ? '/admin/dashboard' : '/admin'
-const entry = `/${profile.directory}/index.html?__komari_route=`
+const hasWorkbench = Boolean(profile) && expectedVersion !== '1.4.3'
+const adminRoute = modern || official ? '/admin/dashboard' : '/admin'
+const entry = profile ? `/${profile.directory}/index.html?__komari_route=` : ''
 const root = resolve(import.meta.dirname, '..')
 const artifacts = resolve(root, 'test-results/live-admin', expectedVersion)
 mkdirSync(artifacts, { recursive: true })
@@ -79,13 +81,20 @@ try {
     .sort((a, b) => statSync(resolve(root, b)).mtimeMs - statSync(resolve(root, a)).mtimeMs)[0]
   if (!zip)
     throw new Error('Build the current theme ZIP before running this check')
-  const data = readFileSync(resolve(root, zip))
-  const upload = (await (await checked('post', '/api/admin/upload/init', { data: { purpose: 'theme', size: data.length, filename: zip } })).json()).data
-  for (let start = 0, index = 0; start < data.length; start += upload.chunk_size, index++) {
-    await checked('post', '/api/admin/upload/chunk', { multipart: { upload_id: upload.upload_id, chunk_index: String(index), chunk_data: { name: 'chunk.bin', mimeType: 'application/octet-stream', buffer: data.subarray(start, start + upload.chunk_size) } } })
+  async function installTheme(path) {
+    const data = readFileSync(path)
+    const upload = (await (await checked('post', '/api/admin/upload/init', { data: { purpose: 'theme', size: data.length, filename: basename(path) } })).json()).data
+    for (let start = 0, index = 0; start < data.length; start += upload.chunk_size, index++) {
+      await checked('post', '/api/admin/upload/chunk', { multipart: { upload_id: upload.upload_id, chunk_index: String(index), chunk_data: { name: 'chunk.bin', mimeType: 'application/octet-stream', buffer: data.subarray(start, start + upload.chunk_size) } } })
+    }
+    await checked('post', '/api/admin/upload/merge', { data: { upload_id: upload.upload_id } })
+    await checked('get', `/api/admin/theme/set?theme=${encodeURIComponent(manifest.short)}`)
   }
-  await checked('post', '/api/admin/upload/merge', { data: { upload_id: upload.upload_id } })
-  await checked('get', `/api/admin/theme/set?theme=${encodeURIComponent(manifest.short)}`)
+  const settingsPath = `/api/admin/theme/settings?theme=${encodeURIComponent(manifest.short)}`
+  if (previousTheme)
+    await installTheme(resolve(previousTheme))
+  else
+    await installTheme(resolve(root, zip))
   const initialSettings = {
     hideEarth: true,
     visitorInfoEnabled: false,
@@ -94,7 +103,14 @@ try {
     compatibilitySentinel: { keep: true },
     _komari_onboarding_v1: { seen: ['install', 'workbench', 'notifications', 'markets', 'terminal'], workbenchOpened: true },
   }
-  await checked('post', `/api/admin/theme/settings?theme=${encodeURIComponent(manifest.short)}`, { data: initialSettings })
+  await checked('post', settingsPath, { data: initialSettings })
+  if (previousTheme) {
+    await installTheme(resolve(root, zip))
+    const upgradedSettings = (await (await checked('get', '/api/public')).json()).data.theme_settings
+    expect(upgradedSettings.compatibilitySentinel).toEqual({ keep: true })
+    expect(upgradedSettings.themeMode).toBe('dark')
+    passed('theme upgrade retains the previous release settings')
+  }
   passed('real chunk upload and theme activation')
   const created = await (await checked('post', '/api/admin/client/add', { data: { name: 'Synthetic validation node' } })).json()
   const uuid = created.uuid || created.data?.uuid
@@ -157,14 +173,58 @@ try {
     return metrics.series?.some(series => series.points?.some(point => point.value === 67.8)) ?? false
   }, { timeout: 15000 }).toBe(true)
   passed('real metric store returns reported CPU history')
+  if (official) {
+    const peerName = 'Synthetic comparison peer'
+    const second = await (await checked('post', '/api/admin/client/add', { data: { name: peerName } })).json()
+    const peer = second.uuid || second.data?.uuid
+    expect(peer).toBeTruthy()
+    const peerCredentials = await (await checked('get', `/api/admin/client/${peer}/token`)).json()
+    const peerToken = peerCredentials.token || peerCredentials.data?.token
+    expect(Boolean(peerToken)).toBe(true)
+    const task = await rpc('admin:addPingTask', { clients: [uuid, peer], name: 'Synthetic shared task', target: '127.0.0.1', type: 'icmp', interval: 60 })
+    async function reportPing(nodeToken, value) {
+      let response
+      try {
+        response = await api.post(`/api/clients/v2/rpc?token=${encodeURIComponent(nodeToken)}`, {
+          data: { jsonrpc: '2.0', id: 1, method: 'agent.pingResult', params: { task_id: task.task_id, ping_type: 'icmp', value, finished_at: new Date().toISOString() } },
+        })
+      }
+      catch { throw new Error('Synthetic Ping report transport failed') }
+      if (!response.ok() || (await response.json()).error)
+        throw new Error('Synthetic Ping report was rejected')
+    }
+    await reportPing(token, 45)
+    await delay(200)
+    await reportPing(token, -1)
+    await reportPing(peerToken, 80)
+    await expect.poll(async () => {
+      const payload = await rpc('public:getPingMetricStats', { entity_ids: [uuid, peer], task_id: task.task_id, hours: 1 })
+      return payload.stats?.length ?? 0
+    }, { timeout: 20000 }).toBe(2)
+    await page.reload()
+    await page.getByRole('button', { name: '节点对比', exact: true }).click()
+    await page.getByRole('button', { name: 'Synthetic validation node', exact: true }).click()
+    await page.getByRole('button', { name: peerName, exact: true }).click()
+    await page.getByRole('tab', { name: '线路对比' }).click()
+    await expect(page.getByLabel('共同探测任务')).toHaveValue(String(task.task_id))
+    await expect(page.getByText('50.00% 丢包', { exact: true }).first()).toBeVisible()
+    await expect(page.getByText('1 / 2', { exact: true }).first()).toBeVisible()
+    await page.screenshot({ path: resolve(artifacts, 'comparison.png'), fullPage: true })
+    passed('real backend comparison renders shared-task samples and packet loss')
+  }
   await page.getByRole('button', { name: '后台管理' }).click()
   await expect(page).toHaveURL(`${baseURL}${adminRoute}`)
-  await expect(page.locator(`link[href*="/${profile.directory}/glass-admin.css"]`)).toHaveCount(1)
-  await expect(page.locator(`script[type="module"][src*="/${profile.directory}/"]`)).toHaveCount(1)
+  if (profile) {
+    await expect(page.locator(`link[href*="/${profile.directory}/glass-admin.css"]`)).toHaveCount(1)
+    await expect(page.locator(`script[type="module"][src*="/${profile.directory}/"]`)).toHaveCount(1)
+  }
+  else {
+    await expect(page.locator('link[href*="glass-admin.css"]')).toHaveCount(0)
+  }
   await expect(page.locator('body')).toContainText(/Dashboard|仪表板|仪表盘/)
   await page.screenshot({ path: resolve(artifacts, 'admin.png'), fullPage: true })
-  passed('version selection and new embedded admin boot')
-  await page.goto(`${entry}%2Fadmin%2Ftheme_managed`)
+  passed(official ? 'Komari 1.6.2 official administration loads' : 'version selection and embedded administration loads')
+  await page.goto(entry ? `${entry}%2Fadmin%2Ftheme_managed` : '/admin/theme_managed')
   await expect(page).toHaveURL(`${baseURL}/admin/theme_managed`)
   await expect(page.locator('body')).toContainText('基础与外观')
   const saved = page.waitForResponse(response => response.url().includes('/api/admin/theme/settings') && response.request().method() === 'POST')
@@ -173,7 +233,7 @@ try {
   const settings = (await (await checked('get', '/api/public')).json()).data.theme_settings
   expect(settings.hideEarth).toBe(true)
   expect(settings.themeMode).toBe('dark')
-  if (modern) {
+  if (modern || official) {
     expect(settings.compatibilitySentinel).toEqual({ keep: true })
     expect(settings._komari_onboarding_v1).toEqual(initialSettings._komari_onboarding_v1)
   }
@@ -211,7 +271,7 @@ try {
     await page.screenshot({ path: resolve(artifacts, 'workbench.png'), fullPage: true })
     passed('terminal node menu and lazy file workbench load')
   }
-  const incompatible = EMBEDDED_ADMIN_PROFILES.find(item => item.directory !== profile.directory)
+  const incompatible = EMBEDDED_ADMIN_PROFILES.find(item => item.directory !== profile?.directory)
   await page.goto(`/${incompatible.directory}/index.html?__komari_route=%2Fadmin`)
   await expect(page).toHaveURL(`${baseURL}${adminRoute}`)
   await expect(page.locator('link[href*="glass-admin.css"]')).toHaveCount(0)
@@ -224,7 +284,7 @@ try {
   const guestPage = await guest.newPage()
   await guestPage.goto('/')
   await expect(guestPage.getByText('Synthetic validation node', { exact: true }).first()).toBeVisible()
-  await guestPage.goto(`${entry}%2Fadmin`)
+  await guestPage.goto(entry ? `${entry}%2Fadmin` : '/admin')
   await expect(guestPage.locator('input[type="password"]')).toBeVisible()
   await guest.close()
   passed('public guest monitoring and protected admin login')

@@ -180,3 +180,15 @@ export async function loadPingRecordsWithTasks(hours: number, maxCount?: number,
     { shouldRetry: shouldRetryHistoryRequest },
   )
 }
+
+export async function loadLegacyPingTaskRecords(uuid: string, taskId: number, hours: number): Promise<PingRecord[]> {
+  const safeHours = normalizeHours(hours)
+  return requestManager.run(
+    `${getPingRecordsRequestKey(safeHours, undefined, uuid)}:task:${taskId}`,
+    async (signal) => {
+      const result = await getSharedRpc().getPublicPingRecords({ uuid, task_id: String(taskId), hours: safeHours }, signal)
+      return result.records ?? []
+    },
+    { shouldRetry: shouldRetryHistoryRequest },
+  )
+}
