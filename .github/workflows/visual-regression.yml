@@ -40,8 +40,44 @@ jobs:
       - name: Run visual regression tests
         run: bun run test:visual
 
+      - name: Upload visual differences
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: visual-regression-diffs
+          path: |
+            test-results/
+            playwright-report/
+          if-no-files-found: ignore
+          retention-days: 14
+
+  compatibility:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+
+      - name: Set up Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.3.14
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: '24'
+
+      - name: Install dependencies and build release package
+        run: |
+          bun install --frozen-lockfile
+          bun run build
+
+      - name: Install compatibility browsers
+        run: bunx playwright install --with-deps chromium webkit
+
       - name: Verify upgrade and compatibility on Komari 1.6.2
-        if: github.event_name == 'pull_request'
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
@@ -51,11 +87,9 @@ jobs:
           node scripts/verify-komari-admin.mjs "$RUNNER_TEMP/komari-1.6.2" 1.6.2 "$RUNNER_TEMP/glassops-v1.0.11.zip"
 
       - name: Check WebKit comparison compatibility
-        if: github.event_name == 'pull_request'
         env:
           PLAYWRIGHT_COMPAT_BROWSER: webkit
         run: |
-          bunx playwright install --with-deps webkit
           bunx playwright test tests/visual/network-comparison.spec.ts --output=test-results/webkit --reporter=list
 
       - name: Upload comparison screenshots
@@ -64,19 +98,7 @@ jobs:
         with:
           name: network-comparison
           path: |
-            test-results/artifacts/**/network-comparison-*.png
-            test-results/webkit/**/network-comparison-*.png
-            test-results/live-admin/1.6.2/comparison.png
-          if-no-files-found: ignore
-          retention-days: 14
-
-      - name: Upload visual differences
-        if: failure()
-        uses: actions/upload-artifact@v7
-        with:
-          name: visual-regression-diffs
-          path: |
-            test-results/
-            playwright-report/
+            test-results/live-admin/1.6.2/
+            test-results/webkit/
           if-no-files-found: ignore
           retention-days: 14
