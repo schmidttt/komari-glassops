@@ -115,7 +115,7 @@ const homeTools = computed<HomeToolOption[]>(() => {
     return []
 
   const tools: HomeToolOption[] = [
-    { key: 'nodeCompare', label: '对比', icon: 'tabler:columns-3', description: '最多四台节点实时横向对比' },
+    { key: 'nodeCompare', label: '对比', icon: 'tabler:columns-3', description: '实时与线路对比' },
   ]
   if (!appStore.privateFeaturesAllowed)
     return tools

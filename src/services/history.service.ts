@@ -186,7 +186,7 @@ export async function loadLegacyPingTaskRecords(uuid: string, taskId: number, ho
   return requestManager.run(
     `${getPingRecordsRequestKey(safeHours, undefined, uuid)}:task:${taskId}`,
     async (signal) => {
-      const result = await getSharedRpc().getPublicPingRecords({ uuid, task_id: String(taskId), hours: safeHours }, signal)
+      const result = await getSharedRpc().getPublicPingRecords({ uuid, task_id: String(taskId), hours: String(safeHours) }, signal)
       return result.records ?? []
     },
     { shouldRetry: shouldRetryHistoryRequest },

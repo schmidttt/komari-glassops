@@ -173,14 +173,19 @@ const bucketDetail = computed(() => {
     <template v-else>
       <div class="space-y-3 rounded-xl border border-border/45 bg-background/55 px-3 py-3.5 sm:px-4">
         <div class="flex flex-wrap items-end justify-between gap-x-5 gap-y-3">
-          <label class="min-w-0 grow space-y-1.5 sm:max-w-70">
-            <span class="block text-xs font-medium text-muted-foreground">共同探测任务</span>
-            <select v-model="selectedTaskId" class="h-9 w-full truncate rounded-md border border-border/55 bg-background/75 px-2.5 text-sm text-foreground">
-              <option v-for="task in commonTasks" :key="task.id" :value="String(task.id)">
-                {{ task.name }}
-              </option>
-            </select>
-          </label>
+          <div class="flex min-w-0 grow items-end gap-2 sm:max-w-80">
+            <label class="min-w-0 flex-1 space-y-1.5">
+              <span class="block text-xs font-medium text-muted-foreground">共同探测任务</span>
+              <select v-model="selectedTaskId" class="h-9 w-full truncate rounded-md border border-border/55 bg-background/75 px-2.5 text-sm text-foreground">
+                <option v-for="task in commonTasks" :key="task.id" :value="String(task.id)">
+                  {{ task.name }}
+                </option>
+              </select>
+            </label>
+            <Button size="icon" variant="outline" class="size-9 shrink-0" :disabled="loading || !shownRange" aria-label="刷新线路历史" @click="refresh">
+              <Icon icon="tabler:refresh" />
+            </Button>
+          </div>
           <div class="flex min-w-0 flex-wrap items-center gap-1.5" role="group" aria-label="对比时段">
             <Button
               v-for="window in windows" :key="window.value" :aria-pressed="selectedWindow === window.value"
@@ -188,9 +193,6 @@ const bucketDetail = computed(() => {
               class="h-8 px-2.5 text-xs" @click="selectedWindow = window.value"
             >
               {{ window.label }}
-            </Button>
-            <Button size="icon-sm" variant="ghost" :disabled="loading || !shownRange" aria-label="刷新线路历史" @click="refresh">
-              <Icon icon="tabler:refresh" />
             </Button>
           </div>
         </div>
@@ -241,7 +243,9 @@ const bucketDetail = computed(() => {
             <span class="max-w-44 truncate" :title="row.name">{{ row.name }}</span>
           </li>
         </ul>
-        <VChart v-if="hasLatency" class="h-54 w-full sm:h-66" :option="chartOptions" :update-options="{ notMerge: true }" autoresize />
+        <div v-if="hasLatency" class="h-[216px] w-full sm:h-[264px]">
+          <VChart class="h-full w-full" :option="chartOptions" :update-options="{ notMerge: true }" autoresize />
+        </div>
         <p v-else class="px-3 py-8 text-center text-xs text-muted-foreground">
           所选时段没有可绘制的延迟样本。
         </p>

@@ -50,6 +50,14 @@ jobs:
           chmod +x "$RUNNER_TEMP/komari-1.6.2"
           node scripts/verify-komari-admin.mjs "$RUNNER_TEMP/komari-1.6.2" 1.6.2 "$RUNNER_TEMP/glassops-v1.0.11.zip"
 
+      - name: Check WebKit comparison compatibility
+        if: github.event_name == 'pull_request'
+        env:
+          PLAYWRIGHT_COMPAT_BROWSER: webkit
+        run: |
+          bunx playwright install --with-deps webkit
+          bunx playwright test tests/visual/network-comparison.spec.ts --output=test-results/webkit --reporter=list
+
       - name: Upload comparison screenshots
         if: always()
         uses: actions/upload-artifact@v7
@@ -57,6 +65,7 @@ jobs:
           name: network-comparison
           path: |
             test-results/artifacts/**/network-comparison-*.png
+            test-results/webkit/**/network-comparison-*.png
             test-results/live-admin/1.6.2/comparison.png
           if-no-files-found: ignore
           retention-days: 14

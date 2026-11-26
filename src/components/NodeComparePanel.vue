@@ -149,8 +149,8 @@ watch(() => props.nodes.map(node => node.uuid), (uuids) => {
       </button>
     </div>
 
-    <Tabs default-value="snapshot" class="min-w-0">
-      <TabsList aria-label="对比视图" class="mb-3">
+    <Tabs default-value="snapshot" class="min-w-0 flex-col items-start">
+      <TabsList aria-label="对比视图">
         <TabsTrigger value="snapshot">
           <Icon icon="tabler:columns-3" class="h-4 w-4" />
           实时快照
@@ -160,7 +160,7 @@ watch(() => props.nodes.map(node => node.uuid), (uuids) => {
           线路对比
         </TabsTrigger>
       </TabsList>
-      <TabsContent value="snapshot" class="min-w-0">
+      <TabsContent value="snapshot" class="w-full min-w-0">
         <div v-if="selectedNodes.length" class="overflow-x-auto rounded-md bg-background/35 p-1">
           <div class="grid min-w-max gap-px overflow-hidden rounded-sm" :style="comparisonGridStyle">
             <div class="bg-background/65 px-3 py-2 text-xs font-semibold text-muted-foreground">
@@ -204,7 +204,7 @@ watch(() => props.nodes.map(node => node.uuid), (uuids) => {
           </div>
         </div>
       </TabsContent>
-      <TabsContent value="network" class="min-w-0">
+      <TabsContent value="network" class="w-full min-w-0">
         <PingComparisonPanel :nodes="selectedNodes" />
       </TabsContent>
     </Tabs>
